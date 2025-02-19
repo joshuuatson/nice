@@ -4,7 +4,9 @@ import pickle
 import matplotlib.pyplot as plt
 from nice.algorithms.connectivity import epochs_compute_wsmi
 np.set_printoptions(threshold=100)  # Default threshold
-#mne.set_log_level('WARNING') 
+mne.set_log_level('WARNING') 
+import warnings
+warnings.simplefilter("ignore", category=DeprecationWarning)
 from scipy.stats import pearsonr
 from scipy.stats import zscore
 from scipy.signal import detrend
@@ -30,8 +32,8 @@ classes_right = np.arange(0, 20)
 
 for class_right in classes_right:
     results = {}
-    for store in file_numbers:
-        results[f'dataset_{store}'] = {
+    for dataset in file_numbers:
+        results[f'dataset_{dataset}'] = {
             'attention_left': {
                 'larger wsmi': [],
                 'larger pearson': []
@@ -45,6 +47,7 @@ for class_right in classes_right:
     wsmi_means = {}
     wsmi_stdevs = {}
     n_values = {}
+    
     for dataset in file_numbers:
         wsmi_means[f'dataset_{dataset}'] = {
             'left_attleft': [],
@@ -72,30 +75,20 @@ for class_right in classes_right:
         data = pickle.load(open(file_path, 'rb'))
 
         attention_labels = data['label_attend'][0]
-        print("attend", attention_labels[:10])
+        #print("attend", attention_labels[:10])
         label_left = data['label_left'][0]
-        print("label_left", label_left[:10])
+        #print("label_left", label_left[:10])
         label_right = data['label_right'][0]
-        print("label_right", label_right[:10])
+        #print("label_right", label_right[:10])
         attend_01 = data['attend'][0]
-        print ("attend01", attend_01[:10])
+        #print ("attend01", attend_01[:10])
 
-        
-        #attend [11. 14. 18. 15.  2.  5. 12. 16.  2.  0.]
-        #label_left [11. 14.  6. 18.  2.  5.  6. 10.  3. 14.]
-        #label_right [15. 12. 18. 15. 12. 18. 12. 16.  2.  0.]
-        #omitted [0. 0. 1. 1. 0. 0. 1. 1. 1. 1.]
 
         #not filtered for omitted trials 
         left_input_LFP = data['LFP'][0][0]  # Left input  [0,1] means left, Right 
         right_input_LFP = data['LFP'][0][1]  # Right input
         attention_LFP = data['LFP_rec'][0][2]  # Attention layer  [2] means attention 
         omitted = data["omit"][0]
-        # print("omitted", omitted[:10])
-
-        # #subset further based on attention
-        # left_indices = np.where((label_left != label_right) & (omitted == 0) & (attend_01 == 0))[0]
-        # right_indices = np.where((label_left != label_right) & (omitted == 0) & (attend_01 == 1))[0]
 
 
         left_indices = {}
@@ -107,9 +100,7 @@ for class_right in classes_right:
 
 
 
-
-
-    #for left 0 and right 0
+        #for left 0 and right ith
         left_input_LFP_om_left = left_input_LFP[left_indices[0]]
         left_input_LFP_om_left_relevant = left_input_LFP_om_left[:, 100:350]
         right_input_LFP_om_left = right_input_LFP[left_indices[0]]
@@ -228,7 +219,7 @@ for class_right in classes_right:
 
 
         n_times = left_input_LFP_om_left_relevant.shape[1] ##=250
-        print("n_samples", n_times)
+        #print("n_samples", n_times)
 
         dt = 0.002
         sfreq = 1 / dt
@@ -245,12 +236,12 @@ for class_right in classes_right:
             attention_LFP_om_left_relevant 
         ], axis=0)  # Concatenate along time axis
 
-        print("raw_data_left shape =", raw_data_left.shape)  
+        #print("raw_data_left shape =", raw_data_left.shape)  
         # Reshape into (n_channels, n_samples)
         raw_data_left = raw_data_left.reshape(3, -1)  
-        print('raw data left reshaped =', raw_data_left.shape) 
+        #print('raw data left reshaped =', raw_data_left.shape) 
         raw_left = mne.io.RawArray(raw_data_left, info)
-        print("raw_data_left =", raw_left)
+        #print("raw_data_left =", raw_left)
         
 
         #reshaping date for attention right 
@@ -268,14 +259,11 @@ for class_right in classes_right:
         events_left = np.array([[i * n_times, 0, 1] for i in range(len(left_input_LFP_om_left_relevant))])
         events_right = np.array([[i * n_times, 0, 1] for i in range(len(right_input_LFP_om_right_relevant))])
 
-        
-        print("events_left", events_left[:4])
-
+    
         epochs_left = mne.Epochs(raw_left, events_left, event_id={'Trial': 1}, tmin=0, tmax =  0.5,  baseline=None, preload=True)
         epochs_right = mne.Epochs(raw_right, events_right, event_id={'Trial': 1}, tmin=0, tmax = 0.5, baseline=None, preload=True)
-        print('----------------', (n_times - 1)/ sfreq)
-
-        print("epochs_left", epochs_left)
+    
+        #print("epochs_left", epochs_left)
         # epochs_left.plot(n_epochs=5, n_channels=3, scalings = 'auto', title="Attention Left")
         # plt.show()
 
@@ -285,8 +273,7 @@ for class_right in classes_right:
 
         for tau in taus:
             tau_samples = int(tau / (1000 / sfreq))
-            print(f"tau_samples for {tau}: {tau_samples}")
-            
+                        
             wsmi_left, _, _, _ = epochs_compute_wsmi(
                 epochs_left, kernel=kernel, tau=tau_samples, backend='python', method_params={'bypass_csd': True}
             )
@@ -464,16 +451,12 @@ for class_right in classes_right:
     # 'dataset_2': {'attleft': [463], 'attright': [479]}, 
     # 'dataset_4': {'attleft': [471], 'attright': [455]}}
 
-    n_left_check = np.sum([np.array(n_values[f'dataset_{dataset}']['attleft']) for dataset in file_numbers])
-    print('n_left_check = ', n_left_check)
-    n_left = np.sum([n_values[f'dataset_{dataset}']['attleft'] for dataset in file_numbers])
-    print('n_left = ', n_left)
-    
-    n_right = np.sum([n_values[f'dataset_{dataset}']['attright'] for dataset in file_numbers])
-
+    n_left = np.sum([np.array(n_values[f'dataset_{dataset}']['attleft'][0]) for dataset in file_numbers])
+    n_right = np.sum([np.array(n_values[f'dataset_{dataset}']['attright'][0]) for dataset in file_numbers])
+   
     n_left_minus = np.sum([(n_values[f'dataset_{dataset}']['attleft'][0] - 1) for dataset in file_numbers])
     n_right_minus = np.sum([(n_values[f'dataset_{dataset}']['attright'][0] - 1) for dataset in file_numbers])
-
+   
 
     taus = [0, 1, 2, 3]
     for tau_idx in taus:
@@ -485,13 +468,10 @@ for class_right in classes_right:
         mean_wsmi_right_attright.append(np.mean([(wsmi_means[f'dataset_{dataset}']['right_attright'][tau_idx]) for dataset in file_numbers]))
 
         cmll.append((np.sum([n_values[f'dataset_{dataset}']['attleft'][0] * (wsmi_means[f'dataset_{dataset}']['left_attleft'][tau_idx]) for dataset in file_numbers])) / (n_left))
-        print('cmll', cmll)
         cmlr.append((np.sum([n_values[f'dataset_{dataset}']['attleft'][0] * (wsmi_means[f'dataset_{dataset}']['right_attleft'][tau_idx]) for dataset in file_numbers])) / (n_left))
-        print('cmlr', cmlr)
         cmrl.append((np.sum([n_values[f'dataset_{dataset}']['attright'][0] * (wsmi_means[f'dataset_{dataset}']['left_attright'][tau_idx]) for dataset in file_numbers])) / (n_right))
-        print('cmrl', cmrl)
         cmrr.append((np.sum([n_values[f'dataset_{dataset}']['attright'][0] * (wsmi_means[f'dataset_{dataset}']['right_attright'][tau_idx]) for dataset in file_numbers])) / (n_right))
-        print('cmrr', cmrr)
+
 
         
         stdev_wsmi_left_attleft.append(np.sqrt(((np.sum([(n_values[f'dataset_{dataset}']['attleft'][0] - 1) * \
@@ -515,7 +495,6 @@ for class_right in classes_right:
                                                                 / (n_right - 1) ))
 
 
-
         #---------have used the above to calculate stdev rather than below, as it accounts correctly for datasets of different sizes, relevant here when checking specific classes where no. cases is variable 
         # stdev_wsmi_left_attleft.append(np.sqrt((np.sum([(n_values[f'dataset_{dataset}']['attleft'][0] - 1) * (((wsmi_stdevs[f'dataset_{dataset}']['left_attleft'][tau_idx]))**2 + (cmlr[tau_idx] - (wsmi_means[f'dataset_{dataset}']['left_attleft'][tau_idx]))**2) for dataset in file_numbers])) / n_left_minus ))
         # stdev_wsmi_right_attleft.append(np.sqrt((np.sum([(n_values[f'dataset_{dataset}']['attleft'][0] - 1) * (((wsmi_stdevs[f'dataset_{dataset}']['right_attleft'][tau_idx]))**2 + (cmlr[tau_idx] - (wsmi_means[f'dataset_{dataset}']['right_attleft'][tau_idx]))**2) for dataset in file_numbers])) / n_left_minus ))
@@ -526,20 +505,12 @@ for class_right in classes_right:
         #by the mean for dataset 1, left left, tau = 4. it does the same for all datasets and divides by the total number of trials over dataset (for given tau)       
     #stdev is calculated using correct conbined standard deviaiton formula, which weights deviations from combined mean by number of trials in each dataset
 
+    #--calculating standard error in the mean--
     SEM_ll = stdev_wsmi_left_attleft / np.sqrt(n_left)
     SEM_lr = stdev_wsmi_right_attleft / np.sqrt(n_left)
     SEM_rl = stdev_wsmi_left_attright / np.sqrt(n_right)
     SEM_rr = stdev_wsmi_right_attright / np.sqrt(n_right)
 
-
-    print("shape of mean wsmi left attleft:", np.array(mean_wsmi_left_attleft).shape) #(4, )
-    print("shape of cmll:", np.array(cmll).shape)  #(4, )
-    print("shape of stdev wsmi left attleft:", np.array(stdev_wsmi_left_attleft).shape)  #(4, )
-
-
-
-    print("mean_wsmi_left_attleft", mean_wsmi_left_attleft)
-    print("std_wsmi_left_attleft", stdev_wsmi_left_attleft)
 
     taus = [ 8, 16, 32, 64]                                 
     fig, axs = plt.subplots(1, 2, figsize=(12, 6), sharey=True)
@@ -563,116 +534,86 @@ for class_right in classes_right:
 
     plt.tight_layout()
     
+    #saving the figure
     import os
     output_dir = r'C:\Users\joshu\OneDrive\Documents\Physics\PartIII\Project\180225_different_class_plots'
     os.makedirs(output_dir, exist_ok=True)
     fig.savefig(f'{output_dir}/LFP_0{class_right}.png')
     
 
-
-    #--------t-test on averages ----------------
-
-    print('----- averaged across datasets -----')
-    mean_wsmi_left_attleft = np.array(mean_wsmi_left_attleft)
-    mean_wsmi_right_attleft = np.array(mean_wsmi_right_attleft)
-    mean_wsmi_left_attright = np.array(mean_wsmi_left_attright)
-    mean_wsmi_right_attright = np.array(mean_wsmi_right_attright)
-
-
-    t_stat, p_value = ttest_rel(mean_wsmi_left_attleft, mean_wsmi_right_attleft)
-    print('--left--')
-    print(f"t-statistic: {t_stat}")
-    print(f"p-value: {p_value}")
-
-    t_stat, p_value = ttest_rel(mean_wsmi_left_attright, mean_wsmi_right_attright)
-    print('--right--')
-    print(f"t-statistic: {t_stat}")
-    print(f"p-value: {p_value}")
-
-
-    #---------dont want to do this ^^^^, want to do t-test for each session (dependent) -----------------
-
-
-    print('----- for each dataset -----')
-
-    for dataset in file_numbers:
-        t_stat, p_value = ttest_rel(wsmi_means[f'dataset_{dataset}']['left_attleft'], wsmi_means[f'dataset_{dataset}']['right_attleft'])
-        print('--left--')
-        print(f"t-statistic: {t_stat}")
-        print(f"p-value: {p_value}")
-
-        t_stat, p_value = ttest_rel(wsmi_means[f'dataset_{dataset}']['left_attright'], wsmi_means[f'dataset_{dataset}']['right_attright'])
-        print('--right--')
-        print(f"t-statistic: {t_stat}")
-        print(f"p-value: {p_value}")
-
-    print('\\\\')
-
     ##----------- t-test for each value tau -------------------
-
 
     print('t-test for each value tau across datasets')
     tau_idx = [0, 1, 2, 3]
-
+    tau_values = [8, 16, 32, 64]
     for tau in tau_idx:
         t_stat, p_value = ttest_rel([wsmi_means[f'dataset_{dataset}']['left_attleft'][tau] for dataset in file_numbers], \
             [wsmi_means[f'dataset_{dataset}']['right_attleft'][tau] for dataset in file_numbers])
-        print(f"---left, tau = {tau}")
+        print(f"---left, tau = {tau_values[tau]}")
         print(f"t_statistic: {t_stat}")
         print(f"p_value: {p_value}")
 
         t_stat, p_value = ttest_rel([wsmi_means[f'dataset_{dataset}']['left_attright'][tau] for dataset in file_numbers], \
             [wsmi_means[f'dataset_{dataset}']['right_attright'][tau] for dataset in file_numbers])
-        print(f"---right, tau = {tau}")
-        print(f"t_statistic: {t_stat}")
-        print(f"p_value: {p_value}")
-
-        print('\\ -- below should be the same, have made arrays to check for differences -- \\')
-
-    print('t-test for each value tau across datasets')
-    tau_idx = [0, 1, 2, 3]
-
-    left_attleft_array = np.array([wsmi_means[f'dataset_{dataset}']['left_attleft'][tau] for dataset in file_numbers])
-    right_attleft_array = np.array([wsmi_means[f'dataset_{dataset}']['right_attleft'][tau] for dataset in file_numbers])
-    
-    left_attright_array = np.array([wsmi_means[f'dataset_{dataset}']['left_attright'][tau] for dataset in file_numbers])
-    right_attright_array = np.array([wsmi_means[f'dataset_{dataset}']['right_attright'][tau] for dataset in file_numbers])
-
-    for tau in tau_idx:
-        t_stat, p_value = ttest_rel(left_attleft_array, right_attleft_array)
-        print(f"---left, tau = {tau}")
-        print(f"t_statistic: {t_stat}")
-        print(f"p_value: {p_value}")
-
-        t_stat, p_value = ttest_rel(left_attright_array, right_attright_array))
-        print(f"---right, tau = {tau}")
+        print(f"---right, tau = {tau_values[tau]}")
         print(f"t_statistic: {t_stat}")
         print(f"p_value: {p_value}")
 
 
 
-    #for 00
-    # ---left, tau = 3
-    # t_statistic: 2.0420038009797765
-    # p_value: 0.08047454267249732
-    # ---right, tau = 3
-    # t_statistic: -2.5776045289466243
-    # p_value: 0.03659987557935326
+    #save print log to a text file
+    output_log_path = os.path.join(output_dir, f'LFP_0{class_right}_ttest_results.txt')
+    with open(output_log_path, 'w') as f:
+        f.write('t-test for each value tau across datasets\n')
+        for tau in tau_idx:
+            t_stat, p_value = ttest_rel([wsmi_means[f'dataset_{dataset}']['left_attleft'][tau] for dataset in file_numbers], 
+                                        [wsmi_means[f'dataset_{dataset}']['right_attleft'][tau] for dataset in file_numbers])
+            f.write(f"---left, tau = {tau_values[tau]}\n")
+            f.write(f"t_statistic: {t_stat}\n")
+            f.write(f"p_value: {p_value}\n")
+
+            t_stat, p_value = ttest_rel([wsmi_means[f'dataset_{dataset}']['left_attright'][tau] for dataset in file_numbers], 
+                                        [wsmi_means[f'dataset_{dataset}']['right_attright'][tau] for dataset in file_numbers])
+            f.write(f"---right, tau = {tau_values[tau]}\n")
+            f.write(f"t_statistic: {t_stat}\n")
+            f.write(f"p_value: {p_value}\n")
 
 
-    #for 01
-    # ---left, tau = 3
-    # t_statistic: 2.0420038009797765
-    # p_value: 0.08047454267249732
-    # ---right, tau = 3
-    # t_statistic: -2.5776045289466243
-    # p_value: 0.03659987557935326
 
-    #save the plot
-    # Save the plot
-   
-    
+    # #--------t-test on averages ----------------
 
-        
-                
-                
+    # print('----- averaged across datasets -----')
+    # mean_wsmi_left_attleft = np.array(mean_wsmi_left_attleft)
+    # mean_wsmi_right_attleft = np.array(mean_wsmi_right_attleft)
+    # mean_wsmi_left_attright = np.array(mean_wsmi_left_attright)
+    # mean_wsmi_right_attright = np.array(mean_wsmi_right_attright)
+
+
+    # t_stat, p_value = ttest_rel(mean_wsmi_left_attleft, mean_wsmi_right_attleft)
+    # print('--left--')
+    # print(f"t-statistic: {t_stat}")
+    # print(f"p-value: {p_value}")
+
+    # t_stat, p_value = ttest_rel(mean_wsmi_left_attright, mean_wsmi_right_attright)
+    # print('--right--')
+    # print(f"t-statistic: {t_stat}")
+    # print(f"p-value: {p_value}")
+
+
+    # #---------dont want to do this ^^^^, want to do t-test for each session (dependent) -----------------
+
+
+    # print('----- for each dataset -----')
+
+    # for dataset in file_numbers:
+    #     t_stat, p_value = ttest_rel(wsmi_means[f'dataset_{dataset}']['left_attleft'], wsmi_means[f'dataset_{dataset}']['right_attleft'])
+    #     print('--left--')
+    #     print(f"t-statistic: {t_stat}")
+    #     print(f"p-value: {p_value}")
+
+    #     t_stat, p_value = ttest_rel(wsmi_means[f'dataset_{dataset}']['left_attright'], wsmi_means[f'dataset_{dataset}']['right_attright'])
+    #     print('--right--')
+    #     print(f"t-statistic: {t_stat}")
+    #     print(f"p-value: {p_value}")
+
+    # print('\\\\')

@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 
 print('--------------LFP-----------------')
 
-taus = [0, 1,2,3,4]
+taus = [0, 1,2,3]
 i_values = [1, 2, 4,  8, 14, 15, 20, 23]
 data_tau_left = {tau: [] for tau in taus}
 data_tau_right = {tau: [] for tau in taus}
@@ -20,7 +20,14 @@ data_p_right = {tau: [] for tau in taus}
 count_p_left = {tau:[] for tau in taus}
 count_p_right = {tau:[] for tau in taus}
 
-
+data = {'dataset_1': {'attention_left': {'larger wsmi': [0, 0, 0, 0], 'larger pearson': [1]}, 'attention_right': {'larger wsmi': [0, 1, 0, 1], 'larger pearson': [0]}}, 'dataset_2': {'attention_left': {'larger wsmi': [0, 0, 1, 1], 'larger pearson': [1]}, 'attention_right': {'larger wsmi': [1, 1, 1, 1], 'larger pearson': [0]}}, 'dataset_4': {'attention_left': {'larger wsmi': [0, 0, 1, 0], 'larger pearson': [1]}, 'attention_right': {'larger wsmi': [0, 1, 1, 1], 'larger pearson': [0]}}, 'dataset_8': {'attention_left': {'larger wsmi': [0, 0, 1, 0], 'larger pearson': [1]}, 'attention_right': {'larger wsmi': [1, 1, 1, 1], 'larger pearson': [0]}}, 'dataset_14': {'attention_left': {'larger wsmi': [0, 0, 0, 0], 'larger pearson': [1]}, 'attention_right': {'larger wsmi': [1, 0, 0, 1], 'larger pearson': [0]}}, 'dataset_15': {'attention_left': {'larger wsmi': [0, 1, 1, 1], 'larger pearson': [0]}, 'attention_right': {'larger wsmi': [0, 1, 1, 1], 'larger pearson': [0]}}, 'dataset_20': {'attention_left': {'larger wsmi': [1, 1, 0, 0], 'larger pearson': [1]}, 'attention_right': {'larger wsmi': [1, 1, 1, 0], 'larger pearson': [0]}}, 'dataset_23': {'attention_left': {'larger wsmi': [0, 0, 0, 0], 'larger pearson': [1]}, 'attention_right': {'larger wsmi': [0, 0, 1, 1], 'larger pearson': [0]}}}
+##LFP00:
+#wsmi mean acc left = 0.71875
+# wsmi mean acc right = 0.71875
+# wsmi accuracy full left: {0: 0.875, 1: 0.75, 2: 0.5, 3: 0.75}
+# wsmi accuracy full right: {0: 0.5, 1: 0.75, 2: 0.75, 3: 0.875}
+# Accuracy Pearson left: 0.125
+# Accuracy Pearson right: 0.0
 
 for tau in taus:
     for file_number in i_values:
