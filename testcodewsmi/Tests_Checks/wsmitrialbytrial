@@ -1,0 +1,242 @@
+import numpy as np
+import mne
+import pickle
+import matplotlib.pyplot as plt
+from nice.algorithms.connectivity import epochs_compute_wsmi
+np.set_printoptions(threshold=900)  #default threshold
+
+#load data
+file_path = 'C:/Users/joshu/PartIIIProject/RSNNdale_attention_1_attention_test'
+data = pickle.load(open(file_path, 'rb'))
+
+def min_max_normalize(data):
+    return (data - np.min(data)) / (np.max(data) - np.min(data))
+
+# Apply smoothing (e.g., Gaussian filter)
+from scipy.ndimage import gaussian_filter1d
+
+
+attention_labels = data['label_attend'][0]
+print("attend", attention_labels[:10])
+label_left = data['label_left'][0]
+print("label_left", label_left[:10])
+label_right = data['label_right'][0]
+print("label_right", label_right[:10])
+attend_01 = data['attend'][0]
+print ("attend01", attend_01[:10])
+
+
+#not filtered for omitted trials 
+left_input_LFP = data['LFP'][0][0]  # Left input  [0,1] means left, Right 
+right_input_LFP = data['LFP'][0][1]  # Right input
+attention_LFP = data['LFP_rec'][0][2]  # Attention layer  [2] means attention 
+
+omitted = data["omit"][0]
+print("omitted", omitted[:10])
+
+# attend [11. 14. 18. 15.  2.  5. 12. 16.  2.  0.]
+# label_left [11. 14.  6. 18.  2.  5.  6. 10.  3. 14.]
+# label_right [15. 12. 18. 15. 12. 18. 12. 16.  2.  0.]
+#attend01 [0. 0. 1. 1. 0. 0. 1. 1. 1. 1.]
+#omitted [0. 0. 1. 1. 0. 1. 0. 1. 1. 1.]
+
+# attend [11. 14.  2. 12.]
+# label_left [11. 14.  2. 6.]
+# label_right [15. 12. 12. 12.]
+#attend01 [0. 0.  0. 1.]
+
+# Plotting for multiple trial indices
+trial_indices = [0, 1, 4, 6]
+
+for trial_idx in trial_indices:
+
+    plt.plot(left_input_LFP[trial_idx], label="Left Input LFP")
+    plt.plot(right_input_LFP[trial_idx], label="Right Input LFP")
+    plt.plot(attention_LFP[trial_idx], label="Attention Layer LFP")
+    plt.title(f"LFP Data for Trial {trial_idx}")
+    plt.xlabel("Time (ms)")
+    plt.ylabel("LFP")
+    plt.legend()
+    plt.show()
+
+
+    #of non omitted trials
+    #first left 
+    #second left
+    #third left
+    #fourth right 
+
+    #therefore expect greater wsmi on left for 1,2,3, and greater wsmi on right for 4
+
+    left_input_triali = left_input_LFP[trial_idx]
+    right_input_triali= right_input_LFP[trial_idx]
+    attention_triali = attention_LFP[trial_idx]
+
+
+    # Normalize each channel
+    left_input_normalized = min_max_normalize(left_input_triali)
+    right_input_normalized = min_max_normalize(right_input_triali)
+    attention_normalized = min_max_normalize(attention_triali)
+
+    plt.plot(left_input_normalized, label="Left Input LFP")
+    plt.plot(right_input_normalized, label="Right Input LFP")
+    plt.plot(attention_normalized, label="Attention Layer LFP")
+    plt.title(f"Normalised LFP Data for Trial {trial_idx}")
+    plt.xlabel("Time (ms)")
+    plt.ylabel("LFP")
+    plt.legend()
+    plt.show()
+
+
+
+    sigma = 5  # Standard deviation for Gaussian kernel
+    left_input_smoothed = gaussian_filter1d(left_input_normalized, sigma)
+    right_input_smoothed = gaussian_filter1d(right_input_normalized, sigma)
+    attention_smoothed = gaussian_filter1d(attention_normalized, sigma)
+
+    plt.plot(left_input_smoothed, label="Left Input LFP")
+    plt.plot(right_input_smoothed, label="Right Input LFP")
+    plt.plot(attention_smoothed, label="Attention Layer LFP")
+    plt.title(f"Smoothed LFP Data for Trial {trial_idx}")
+    plt.xlabel("Time (ms)")
+    plt.ylabel("LFP")
+    plt.legend()
+    plt.show()
+
+    raw_data_raw = np.stack([left_input_triali, right_input_triali, attention_triali])
+    raw_data_normalised = np.stack([left_input_normalized, right_input_normalized, attention_normalized])
+    raw_data_smoothed = np.stack([left_input_smoothed, right_input_smoothed, attention_smoothed])
+
+
+    n_times = raw_data_raw.shape[1] ##=500
+    print("n_samples", n_times)
+
+    dt = 0.002
+    sfreq = 1 / dt
+    ch_names = ['left_input', 'right_input', 'attention_layer']
+    ch_types = ['eeg', 'eeg', 'eeg']
+    info = mne.create_info(ch_names=ch_names, sfreq=sfreq, ch_types=ch_types)
+
+
+    raw_data = mne.io.RawArray(raw_data_raw, info)
+    raw_data_normalised = mne.io.RawArray(raw_data_normalised, info)
+    raw_data_smoothed = mne.io.RawArray(raw_data_smoothed, info)
+
+
+    events = np.array([
+    [0,0,1]
+    ])
+
+
+    epochs_raw = mne.Epochs(raw_data, events, event_id={'Trial': 1}, tmin=0, tmax=(n_times - 1) / sfreq, baseline=None, preload=True)
+    epochs_normalised = mne.Epochs(raw_data_normalised, events, event_id={'Trial': 1}, tmin=0, tmax=(n_times - 1) / sfreq, baseline=None, preload=True)
+    epochs_smoothed = mne.Epochs(raw_data_smoothed, events, event_id={'Trial': 1}, tmin=0, tmax=(n_times - 1) / sfreq, baseline=None, preload=True)
+
+    print("Raw data shape:", raw_data.get_data().shape)
+    print("Events array:", events)
+    print("Number of epochs:", len(epochs_raw))
+
+
+    kernel = 3
+    taus = [8, 16, 32, 64]  # in ms
+    #making wsmi results dictionary to store raw, normalised, and smoothed data
+    wsmi_results = {'raw': {}, 'normalised': {}, 'smoothed': {}}
+
+    for tau in taus:
+        tau_samples = int(tau / (1000 / sfreq))
+        print(f"tau_samples for {tau}: {tau_samples}")
+
+        wsmi, _, _, _ = epochs_compute_wsmi(
+            epochs_raw, kernel=kernel, tau=tau_samples, backend='python', method_params={'bypass_csd': True}
+        )
+
+        wsmi_results['raw'][tau] = wsmi
+
+        wsmi, _, _, _ = epochs_compute_wsmi(
+            epochs_normalised, kernel=kernel, tau=tau_samples, backend='python', method_params={'bypass_csd': True}
+        )
+
+        wsmi_results['normalised'][tau] = wsmi
+
+        wsmi, _, _, _ = epochs_compute_wsmi(
+            epochs_smoothed, kernel=kernel, tau=tau_samples, backend='python', method_params={'bypass_csd': True}
+        )
+
+        wsmi_results['smoothed'][tau] = wsmi
+
+    
+
+
+    # Initialize lists to store wSMI values
+    wsmi_left_attention_raw = []  # wSMI between left_input and attention_layer
+    wsmi_right_attention_raw = []  # wSMI between right_input and attention_layer
+
+    wsmi_left_attention_normalised = []  # wSMI between left_input and attention_layer
+    wsmi_right_attention_normalised = []  # wSMI between right_input and attention_layer
+
+    wsmi_left_attention_smoothed = []  # wSMI between left_input and attention_layer
+    wsmi_right_attention_smoothed = []  # wSMI between right_input and attention_layer
+
+    # Extract wSMI values for each tau
+    for tau in taus:
+        wsmi_left_attention_raw.append(wsmi_results['raw'][tau][0, 2, 0])  # left_input vs attention_layer
+        wsmi_right_attention_raw.append(wsmi_results['raw'][tau][1, 2, 0])  # right_input vs attention_layer
+
+        wsmi_left_attention_normalised.append(wsmi_results['normalised'][tau][0, 2, 0])  # left_input vs attention_layer
+        wsmi_right_attention_normalised.append(wsmi_results['normalised'][tau][1, 2, 0])  # right_input vs attention_layer
+
+        wsmi_left_attention_smoothed.append(wsmi_results['smoothed'][tau][0, 2, 0])  # left_input vs attention_layer
+        wsmi_right_attention_smoothed.append(wsmi_results['smoothed'][tau][1, 2, 0])  # right_input vs attention_layer
+
+
+
+    # Plot the results
+    fig, axs = plt.subplots(3, 1, figsize=(6, 15))
+
+    # Raw data plot
+    axs[0].scatter(taus, wsmi_left_attention_raw, marker='o', label='Left Input vs Attention Layer', color='blue')
+    axs[0].scatter(taus, wsmi_right_attention_raw, marker='o', label='Right Input vs Attention Layer', color='orange')
+    axs[0].set_xlabel('Tau (ms)', fontsize=12)
+    axs[0].set_ylabel('wSMI', fontsize=12)
+    axs[0].set_title('Raw Data: wSMI vs Tau for Input vs Attention Layer', fontsize=14)
+    axs[0].legend(fontsize=10)
+    axs[0].grid(True)
+
+    # Normalised data plot
+    axs[1].scatter(taus, wsmi_left_attention_normalised, marker='o', label='Left Input vs Attention Layer', color='blue')
+    axs[1].scatter(taus, wsmi_right_attention_normalised, marker='o', label='Right Input vs Attention Layer', color='orange')
+    axs[1].set_xlabel('Tau (ms)', fontsize=12)
+    axs[1].set_ylabel('wSMI', fontsize=12)
+    axs[1].set_title('Normalised Data: wSMI vs Tau for Input vs Attention Layer', fontsize=14)
+    axs[1].legend(fontsize=10)
+    axs[1].grid(True)
+
+    # Smoothed data plot
+    axs[2].scatter(taus, wsmi_left_attention_smoothed, marker='o', label='Left Input vs Attention Layer', color='blue')
+    axs[2].scatter(taus, wsmi_right_attention_smoothed, marker='o', label='Right Input vs Attention Layer', color='orange')
+    axs[2].set_xlabel('Tau (ms)', fontsize=12)
+    axs[2].set_ylabel('wSMI', fontsize=12)
+    axs[2].set_title('Smoothed Data: wSMI vs Tau for Input vs Attention Layer', fontsize=14)
+    axs[2].legend(fontsize=10)
+    axs[2].grid(True)
+
+    # Adjust layout and show the plot
+    plt.tight_layout()
+    plt.subplots_adjust(hspace=0.5)
+    plt.show()
+
+
+    ##person correlations
+    from scipy.stats import pearsonr
+
+
+
+    # Compute correlation for left_input and attention_layer
+    corr_left_attention, _ = pearsonr(left_input_triali, attention_triali)
+    print(f"Pearson correlation (Left Input vs. Attention Layer): {corr_left_attention}")
+
+    # Compute correlation for right_input and attention_layer
+    corr_right_attention, _ = pearsonr(right_input_triali, attention_triali)
+    print(f"Pearson correlation (Right Input vs. Attention Layer): {corr_right_attention}")
+
+

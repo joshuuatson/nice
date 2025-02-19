@@ -1,0 +1,159 @@
+import pandas as pd
+import numpy as np
+from scipy import stats
+import matplotlib.pyplot as plt
+
+
+
+
+
+print('--------------LFP-----------------')
+
+taus = [0, 1,2,3,4]
+i_values = [1, 2, 4,  8, 14, 15, 20, 23]
+data_tau_left = {tau: [] for tau in taus}
+data_tau_right = {tau: [] for tau in taus}
+count_left = {tau:[] for tau in taus}
+count_right = {tau:[] for tau in taus}
+data_p_left = {tau: [] for tau in taus}
+data_p_right = {tau: [] for tau in taus}
+count_p_left = {tau:[] for tau in taus}
+count_p_right = {tau:[] for tau in taus}
+
+
+
+for tau in taus:
+    for file_number in i_values:
+        data_tau_left[tau].append(data[f'dataset_{file_number}']['attention_left']['larger wsmi'][tau])
+        data_tau_right[tau].append(data[f'dataset_{file_number}']['attention_right']['larger wsmi'][tau])
+        count_left[tau] = int(np.sum(data_tau_left[tau]))
+        count_right[tau] = int(np.sum(data_tau_right[tau]))
+        data_p_left[tau].append(data[f'dataset_{file_number}']['attention_left']['larger pearson'][0])
+        data_p_right[tau].append(data[f'dataset_{file_number}']['attention_right']['larger pearson'][0])
+        count_p_left = int(np.sum(data_p_left[tau]))
+        count_p_right = int(np.sum(data_p_right[tau]))
+
+
+# Calculate correct and incorrect counts for left and right attention
+left_correct = {tau: len(i_values) - count_left[tau] for tau in taus}
+left_incorrect = {tau: count_left[tau] for tau in taus}
+right_correct = {tau: count_right[tau] for tau in taus}
+right_incorrect = {tau: len(i_values) - count_right[tau] for tau in taus}
+
+# Calculate correct and incorrect counts for Pearson
+left_p_correct = len(i_values) - count_p_left
+left_p_incorrect = count_p_left
+right_p_correct = count_p_right
+right_p_incorrect = len(i_values) - count_p_right
+
+accuracy_left = {tau: left_correct[tau] / len(i_values) for tau in taus}
+accuracy_right = {tau: right_correct[tau] / len(i_values) for tau in taus}
+accuracy_p_left = left_p_correct / len(i_values)
+accuracy_p_right = right_p_correct / len(i_values)
+
+print('wsmi mean acc left =', np.mean(list(accuracy_left.values())))
+print('wsmi mean acc right =', np.mean(list(accuracy_right.values())))
+print("wsmi accuracy full left:", accuracy_left)  
+print("wsmi accuracy full right:", accuracy_right)
+
+print("Accuracy Pearson left:", accuracy_p_left)
+print("Accuracy Pearson right:", accuracy_p_right)
+
+
+
+# #from LFP wsmi stdev calculation: 
+# #we have mean_wsmi_left_attleft etc values therefore we have the means of the means 
+# #if i give the function n_values, then it will need to look at a dataset, find the number for left at a given tau, 
+# #and then multiply the corresponding mean of the dataset by that, for each dataset and each tau
+# #this will give a 10 value array. 
+# print(wsmi_means)
+# print(wsmi_stdevs)
+# #plotting the averages across datasets for wsmi
+
+
+
+# cmll = []
+# cmlr = []
+# cmrl = []
+# cmrr = []
+
+# print("n_values", n_values)
+        
+
+# n_left = np.sum([n_values[f'dataset_{dataset}']['attleft'] for dataset in i_values])
+# n_right = np.sum([n_values[f'dataset_{dataset}']['attright'] for dataset in i_values])
+
+# taus = [0, 1, 2, 3, 4]
+# for tau_idx in taus:
+#     mean_wsmi_left_attleft.append(np.mean([(wsmi_means[f'dataset_{dataset}']['left_attleft'][tau_idx]) for dataset in i_values]))
+#     mean_wsmi_right_attleft.append(np.mean([(wsmi_means[f'dataset_{dataset}']['right_attleft'][tau_idx]) for dataset in i_values]))
+#     mean_wsmi_left_attright.append(np.mean([(wsmi_means[f'dataset_{dataset}']['left_attright'][tau_idx]) for dataset in i_values]))
+#     mean_wsmi_right_attright.append(np.mean([(wsmi_means[f'dataset_{dataset}']['right_attright'][tau_idx]) for dataset in i_values]))
+
+#     cmll.append((np.sum([n_values[f'dataset_{dataset}']['attleft'][0] * (wsmi_means[f'dataset_{dataset}']['left_attleft'][tau_idx]) for dataset in i_values])) / (n_left))
+#     print('cmll', cmll)
+#     cmlr.append((np.sum([n_values[f'dataset_{dataset}']['attleft'][0] * (wsmi_means[f'dataset_{dataset}']['right_attleft'][tau_idx]) for dataset in i_values])) / (n_left))
+#     print('cmlr', cmlr)
+#     cmrl.append((np.sum([n_values[f'dataset_{dataset}']['attright'][0] * (wsmi_means[f'dataset_{dataset}']['left_attright'][tau_idx]) for dataset in i_values])) / (n_right))
+#     print('cmrl', cmrl)
+#     cmrr.append((np.sum([n_values[f'dataset_{dataset}']['attright'][0] * (wsmi_means[f'dataset_{dataset}']['right_attright'][tau_idx]) for dataset in i_values])) / (n_right))
+#     print('cmrr', cmrr)
+
+#     stdev_wsmi_left_attleft.append(np.sqrt((np.sum([(n_values[f'dataset_{dataset}']['attleft'][0]) * (((wsmi_stdevs[f'dataset_{dataset}']['left_attleft'][tau_idx]))**2 + (cmll[tau_idx] - (wsmi_means[f'dataset_{dataset}']['left_attleft'][tau_idx]))**2) for dataset in i_values])) / n_left ))
+#     stdev_wsmi_right_attleft.append(np.sqrt((np.sum([(n_values[f'dataset_{dataset}']['attleft'][0]) * (((wsmi_stdevs[f'dataset_{dataset}']['right_attleft'][tau_idx]))**2 + (cmlr[tau_idx] - (wsmi_means[f'dataset_{dataset}']['right_attleft'][tau_idx]))**2) for dataset in i_values])) / n_left ))
+#     stdev_wsmi_left_attright.append(np.sqrt((np.sum([(n_values[f'dataset_{dataset}']['attright'][0]) * (((wsmi_stdevs[f'dataset_{dataset}']['left_attright'][tau_idx]))**2 + (cmrl[tau_idx] - (wsmi_means[f'dataset_{dataset}']['left_attright'][tau_idx]))**2) for dataset in i_values])) / n_right ))
+#     stdev_wsmi_right_attright.append(np.sqrt((np.sum([(n_values[f'dataset_{dataset}']['attright'][0]) * (((wsmi_stdevs[f'dataset_{dataset}']['right_attright'][tau_idx]))**2 + (cmrr[tau_idx] - (wsmi_means[f'dataset_{dataset}']['right_attright'][tau_idx]))**2) for dataset in i_values])) / n_right ))
+
+#   #cmll looks at a particular tau, e.g. tau is 4 - begins in dataset 1, takes number of trials for attention left and multiplies
+#     #by the mean for dataset 1, left left, tau = 4. it does the same for all datasets and divides by the total number of trials over dataset (for given tau)       
+#   #stdev is calculated using correct conbined standard deviaiton formula, which weights deviations from combined mean by number of trials in each dataset
+
+           
+
+# print("mean_wsmi_left_attleft", mean_wsmi_left_attleft)
+# print("std_wsmi_left_attleft", stdev_wsmi_left_attleft)
+
+# taus = [4, 8, 16, 32, 64]                                 
+# fig, axs = plt.subplots(1, 2, figsize=(12, 6), sharey=True)
+
+# #left subplot
+# axs[0].errorbar(taus, mean_wsmi_left_attleft, yerr=stdev_wsmi_left_attleft, fmt='x', color='r', label="Left Input vs Attention Layer", capsize=5)
+# axs[0].errorbar(taus, mean_wsmi_right_attleft, yerr=stdev_wsmi_right_attleft, fmt='x', color='k', label="Right Input vs Attention Layer", capsize=5)
+# axs[0].set_title("wSMI - Attention Left - LFP", fontsize=14)
+# axs[0].set_xlabel("τ (ms)", fontsize=12)
+# axs[0].set_ylabel("Average wSMI", fontsize=12)
+# axs[0].legend()
+# axs[0].grid(False)
+
+# #right subplot
+# axs[1].errorbar(taus, mean_wsmi_left_attright, yerr=stdev_wsmi_left_attright, fmt='x', color='r', label="Left Input vs Attention Layer", capsize=5)
+# axs[1].errorbar(taus, mean_wsmi_right_attright, yerr=stdev_wsmi_right_attright, fmt='x', color='k', label="Right Input vs Attention Layer", capsize=5)
+# axs[1].set_title("wSMI - Attention Right - LFP", fontsize=14)
+# axs[1].set_xlabel("τ (ms)", fontsize=12)
+# axs[1].legend()
+# axs[1].grid(False)
+
+# plt.tight_layout()
+# plt.show()
+
+
+
+    # polynomial detrend 
+    # for i in range(len(left_input_LFP_om_left_relevant)):
+    #     left_input_LFP_om_left_relevant[i] = detrend_with_polynomial(left_input_LFP_om_left_relevant[i])
+    #     right_input_LFP_om_left_relevant[i] = detrend_with_polynomial(right_input_LFP_om_left_relevant[i])
+    #     attention_LFP_om_left_relevant[i] = detrend_with_polynomial(attention_LFP_om_left_relevant[i])
+
+    # for i in range(len(left_input_LFP_om_right_relevant)):
+    #     left_input_LFP_om_right_relevant[i] = detrend_with_polynomial(left_input_LFP_om_right_relevant[i])
+    #     right_input_LFP_om_right_relevant[i] = detrend_with_polynomial(right_input_LFP_om_right_relevant[i])
+    #     attention_LFP_om_right_relevant[i] = detrend_with_polynomial(attention_LFP_om_right_relevant[i])
+
+
+    # left_input_LFP_om_left_relevant = normalise_data(left_input_LFP_om_left_relevant)
+    # right_input_LFP_om_left_relevant = normalise_data(right_input_LFP_om_left_relevant)
+    # attention_LFP_om_left_relevant = normalise_data(attention_LFP_om_left_relevant)
+
+    # left_input_LFP_om_right_relevant = normalise_data(left_input_LFP_om_right_relevant)
+    # right_input_LFP_om_right_relevant = normalise_data(right_input_LFP_om_right_relevant)
+    # attention_LFP_om_right_relevant = normalise_data(attention_LFP_om_right_relevant)

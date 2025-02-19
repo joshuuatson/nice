@@ -1,0 +1,534 @@
+import numpy as np
+import mne
+import pickle
+import matplotlib.pyplot as plt
+from nice.algorithms.connectivity import epochs_compute_wsmi
+np.set_printoptions(threshold=100)  # Default threshold
+#mne.set_log_level('WARNING') 
+from scipy.stats import pearsonr
+from scipy.stats import zscore
+from scipy.signal import detrend
+from numpy.polynomial.polynomial import Polynomial
+from scipy.stats import ttest_rel
+
+##---this calculates wsmi and pearson for LFP data
+
+i_values = [1, 2, 4, 8, 14, 15, 20, 23]   #have dropped data 3
+#i_values = [1]
+
+#for data set 3, error with left, but larger wsmi - seems indicative of a problem with the calculation
+# i_values = [1]
+# Initialize results dictionary for 10 datasets
+
+results = {}
+for store in i_values:
+    results[f'dataset_{store}'] = {
+        'attention_left': {
+            'larger wsmi': [],
+            'larger pearson': []
+        },
+        'attention_right': {
+            'larger wsmi': [],
+            'larger pearson': []
+        }
+    }
+
+wsmi_means = {}
+wsmi_stdevs = {}
+n_values = {}
+for dataset in i_values:
+    wsmi_means[f'dataset_{dataset}'] = {
+        'left_attleft': [],
+        'right_attleft': [],
+        'left_attright': [],
+        'right_attright': []
+    }
+    
+    wsmi_stdevs[f'dataset_{dataset}'] = {
+        'left_attleft': [],
+        'right_attleft': [],
+        'left_attright': [],
+        'right_attright': []
+    }
+    
+    n_values[f'dataset_{dataset}'] = {
+        'attleft': [], 
+        'attright': []
+    }
+
+
+
+order = 3
+def detrend_with_polynomial(data, order = order):
+    """Detrend data using polynomial fitting."""
+    x = np.arange(250)  # Time indices
+    fit = Polynomial.fit(x, data, deg=order)  # Fit polynomial of specified degree
+    detrended = data - fit(x)  # Subtract the polynomial fit
+    return detrended
+
+
+def normalise_data(data):
+    for i in range(len(data)):
+        data[i] /= np.max(data[i])
+    return data
+
+
+
+for file_number in i_values:
+    # Load data
+    file_path = f'C:/Users/joshu/PartIIIProject/RSNNdale_attention_{file_number}_attention_test'
+    data = pickle.load(open(file_path, 'rb'))
+
+    attention_labels = data['label_attend'][0]
+    print("attend", attention_labels[:10])
+    label_left = data['label_left'][0]
+    print("label_left", label_left[:10])
+    label_right = data['label_right'][0]
+    print("label_right", label_right[:10])
+    attend_01 = data['attend'][0]
+    print ("attend01", attend_01[:10])
+
+    
+    #attend [11. 14. 18. 15.  2.  5. 12. 16.  2.  0.]
+    #label_left [11. 14.  6. 18.  2.  5.  6. 10.  3. 14.]
+    #label_right [15. 12. 18. 15. 12. 18. 12. 16.  2.  0.]
+    #omitted [0. 0. 1. 1. 0. 0. 1. 1. 1. 1.]
+
+    #not filtered for omitted trials 
+    left_input_LFP = data['LFP'][0][0]  # Left input  [0,1] means left, Right 
+    right_input_LFP = data['LFP'][0][1]  # Right input
+    attention_LFP = data['LFP_rec'][0][2]  # Attention layer  [2] means attention 
+    omitted = data["omit"][0]
+    # print("omitted", omitted[:10])
+
+    #subset further based on attention
+    left_indices = np.where((label_left != label_right) & (omitted == 0) & (attend_01 == 0))[0]
+    right_indices = np.where((label_left != label_right) & (omitted == 0) & (attend_01 == 1))[0]
+
+    n_values[f'dataset_{file_number}']['attleft'].append(len(left_indices))
+    n_values[f'dataset_{file_number}']['attright'].append(len(right_indices))
+
+    left_input_LFP_om_left = left_input_LFP[left_indices]
+    left_input_LFP_om_left_relevant = left_input_LFP_om_left[:, 100:350]
+    right_input_LFP_om_left = right_input_LFP[left_indices]
+    right_input_LFP_om_left_relevant = right_input_LFP_om_left[:, 100:350]
+
+    
+
+
+    left_input_LFP_om_right = left_input_LFP[right_indices]
+    left_input_LFP_om_right_relevant = left_input_LFP_om_right[:, 100:350]
+    right_input_LFP_om_right = right_input_LFP[right_indices]
+    right_input_LFP_om_right_relevant = right_input_LFP_om_right[:, 100:350]
+
+
+    attention_LFP_om_left = attention_LFP[left_indices]
+    attention_LFP_om_left_relevant = attention_LFP_om_left[:, 100:350]
+    attention_LFP_om_right = attention_LFP[right_indices]
+    attention_LFP_om_right_relevant = attention_LFP_om_right[:, 100:350]
+
+    
+    ##---zscore across trials---
+    left_input_LFP_om_left_relevant = zscore(left_input_LFP_om_left_relevant, axis=0)
+    right_input_LFP_om_left_relevant = zscore(right_input_LFP_om_left_relevant, axis=0)
+    attention_LFP_om_left_relevant = zscore(attention_LFP_om_left_relevant, axis=0)
+
+    left_input_LFP_om_right_relevant = zscore(left_input_LFP_om_right_relevant, axis=0)
+    right_input_LFP_om_right_relevant = zscore(right_input_LFP_om_right_relevant, axis=0)
+    attention_LFP_om_right_relevant = zscore(attention_LFP_om_right_relevant, axis=0)
+
+    #---detrend across trials---
+    left_input_LFP_om_left_relevant = detrend(left_input_LFP_om_left_relevant, axis=0)
+    right_input_LFP_om_left_relevant = detrend(right_input_LFP_om_left_relevant, axis=0)
+    attention_LFP_om_left_relevant = detrend(attention_LFP_om_left_relevant, axis=0)
+
+    left_input_LFP_om_right_relevant = detrend(left_input_LFP_om_right_relevant, axis=0)
+    right_input_LFP_om_right_relevant = detrend(right_input_LFP_om_right_relevant, axis=0)
+    attention_LFP_om_right_relevant = detrend(attention_LFP_om_right_relevant, axis=0)
+
+
+    #---detrend in time---
+    for i in range(len(left_input_LFP_om_left_relevant)):
+        left_input_LFP_om_left_relevant[i] = detrend(left_input_LFP_om_left_relevant[i])
+        right_input_LFP_om_left_relevant[i] = detrend(right_input_LFP_om_left_relevant[i])
+        attention_LFP_om_left_relevant[i] = detrend(attention_LFP_om_left_relevant[i])
+
+
+    for i in range(len(left_input_LFP_om_right_relevant)):
+        left_input_LFP_om_right_relevant[i] = detrend(left_input_LFP_om_right_relevant[i])
+        right_input_LFP_om_right_relevant[i] = detrend(right_input_LFP_om_right_relevant[i])
+        attention_LFP_om_right_relevant[i] = detrend(attention_LFP_om_right_relevant[i])
+
+    
+
+    # #can try smoothing here
+    # from scipy.ndimage import gaussian_filter1d
+
+    # def smooth_with_gaussian(data, sigma):
+    #     return gaussian_filter1d(data, sigma=sigma, axis=1) 
+
+    # sigma = 3 
+    # attention_LFP_om_left_relevant = smooth_with_gaussian(attention_LFP_om_left_relevant, sigma=sigma) 
+    # attention_LFP_om_right_relevant = smooth_with_gaussian(attention_LFP_om_right_relevant, sigma=sigma) 
+
+
+   
+
+
+    # # Plot the first trial of the left input LFP om left relevant data -------do this to check normalisation 
+    # plt.figure(figsize=(10, 5))
+    # plt.plot(left_input_LFP_om_left_relevant[0], label='First Trial Left Input LFP (Attention Left)')
+    # plt.xlabel('Time (ms)')
+    # plt.ylabel('LFP')
+    # plt.title('First Trial of Left Input LFP (Attention Left)')
+    # plt.legend()
+    # plt.show()
+
+    # left_input_LFP_om_left_relevant[0] /= np.max(left_input_LFP_om_left_relevant[0])
+
+    # plt.figure(figsize=(10, 5))
+    # plt.plot(left_input_LFP_om_left_relevant[0], label='First Trial Left Input LFP (Attention Left)')
+    # plt.xlabel('Time (ms)')
+    # plt.ylabel('LFP')
+    # plt.title('First Trial of Left Input LFP (Attention Left)')
+    # plt.legend()
+    # plt.show()
+
+
+   
+    
+
+
+    # #plotting the mean across trials of all three data sets for when attention is left and right
+    # #can check here for linear trends, normalisation etc.
+    # fig, ax = plt.subplots(1, 2, figsize=(12, 6))
+    
+    # #plot for Attention Left
+    # ax[0].plot(np.mean(left_input_LFP_om_left_relevant / np.max(left_input_LFP_om_left_relevant), axis=0), label="Left Input")
+    # ax[0].plot(np.mean(right_input_LFP_om_left_relevant/ np.max(right_input_LFP_om_left_relevant), axis=0), label="Right Input")
+    # ax[0].plot(np.mean(attention_LFP_om_left_relevant/np.max(attention_LFP_om_left_relevant), axis=0), label="Attention Layer")
+    # ax[0].set_title("Attention Left")
+    # ax[0].set_xlabel("Time (ms)")
+    # ax[0].set_ylabel("LFP")
+    # ax[0].legend()
+    
+    # #plot for Attention Right
+    # ax[1].plot(np.mean(left_input_LFP_om_right_relevant / np.max(left_input_LFP_om_right_relevant), axis=0), label="Left Input")
+    # ax[1].plot(np.mean(right_input_LFP_om_right_relevant / np.max(right_input_LFP_om_right_relevant), axis=0), label="Right Input")
+    # ax[1].plot(np.mean(attention_LFP_om_right_relevant / np.max(attention_LFP_om_right_relevant), axis=0), label="Attention Layer")
+    # ax[1].set_title("Attention Right")
+    # ax[1].set_xlabel("Time (ms)")
+    # ax[1].set_ylabel("LFP")
+    # ax[1].legend()
+
+    # plt.show()
+
+    n_times = left_input_LFP_om_left_relevant.shape[1] ##=250
+    print("n_samples", n_times)
+
+    dt = 0.002
+    sfreq = 1 / dt
+
+    ch_names = ['left_input', 'right_input', 'attention_layer']
+    ch_types = ['eeg', 'eeg', 'eeg']
+    info = mne.create_info(ch_names=ch_names, sfreq=sfreq, ch_types=ch_types)
+
+
+    #reshaping data for attention left
+    raw_data_left = np.concatenate([
+        left_input_LFP_om_left_relevant, 
+        right_input_LFP_om_left_relevant, 
+        attention_LFP_om_left_relevant 
+    ], axis=0)  # Concatenate along time axis
+
+    print("raw_data_left shape =", raw_data_left.shape)  
+    # Reshape into (n_channels, n_samples)
+    raw_data_left = raw_data_left.reshape(3, -1)  
+    print('raw data left reshaped =', raw_data_left.shape) 
+    raw_left = mne.io.RawArray(raw_data_left, info)
+    print("raw_data_left =", raw_left)
+    
+
+    #reshaping date for attention right 
+    raw_data_right = np.concatenate([
+        left_input_LFP_om_right_relevant,
+        right_input_LFP_om_right_relevant,
+        attention_LFP_om_right_relevant 
+    ], axis=0)
+
+    raw_data_right = raw_data_right.reshape(3, -1)
+    raw_right = mne.io.RawArray(raw_data_right, info)
+
+
+    #defininf event objects, arrays like [0,0,1], [500, 0, 1], [1000, 0, 1] etc
+    events_left = np.array([[i * n_times, 0, 1] for i in range(len(left_input_LFP_om_left_relevant))])
+    events_right = np.array([[i * n_times, 0, 1] for i in range(len(right_input_LFP_om_right_relevant))])
+
+    
+    print("events_left", events_left[:4])
+
+    epochs_left = mne.Epochs(raw_left, events_left, event_id={'Trial': 1}, tmin=0, tmax =  0.5,  baseline=None, preload=True)
+    epochs_right = mne.Epochs(raw_right, events_right, event_id={'Trial': 1}, tmin=0, tmax = 0.5, baseline=None, preload=True)
+    print('----------------', (n_times - 1)/ sfreq)
+
+    print("epochs_left", epochs_left)
+    # epochs_left.plot(n_epochs=5, n_channels=3, scalings = 'auto', title="Attention Left")
+    # plt.show()
+
+    kernel = 3
+    taus = [4, 8, 16, 32, 64]  # in ms
+    wsmi_results = {'left': {}, 'right': {}}
+
+    for tau in taus:
+        tau_samples = int(tau / (1000 / sfreq))
+        print(f"tau_samples for {tau}: {tau_samples}")
+        
+        wsmi_left, _, _, _ = epochs_compute_wsmi(
+            epochs_left, kernel=kernel, tau=tau_samples, backend='python', method_params={'bypass_csd': True}
+        )
+        wsmi_results['left'][tau] = wsmi_left
+        #this containts the data for wsmi at a given tau given attending left. 
+
+        wsmi_right, _, _, _ = epochs_compute_wsmi(
+            epochs_right, kernel=kernel, tau=tau_samples, backend='python', method_params={'bypass_csd': True}
+        )
+        wsmi_results['right'][tau] = wsmi_right
+
+    wsmi_left_input_attleft = []  #wSMI for left input vs attention layer (attention left)
+    wsmi_left_input_attleft_stdev = []  #wSMI for left input vs attention layer (attention left)
+    wsmi_right_input_attleft = []  #wSMI for right input vs attention layer (attention left)
+    wsmi_right_input_attleft_stdev = []  #wSMI for right input vs attention layer (attention left)
+    wsmi_left_input_attright = []  #wSMI for left input vs attention layer (attention right)
+    wsmi_left_input_attright_stdev = []  #wSMI for left input vs attention layer (attention right)
+    wsmi_right_input_attright = []  #wSMI for right input vs attention layer (attention right)
+    wsmi_right_input_attright_stdev = []  #wSMI for right input vs attention layer (attention right)
+
+    #average wSMI for each τ for each condition
+    for tau in taus:
+        # For attention left
+        wsmi_left_input_attleft.append(np.mean(wsmi_results['left'][tau][0, 2, :]))  # Left input vs attention layer
+        wsmi_left_input_attleft_stdev.append(np.std(wsmi_results['left'][tau][0, 2, :], ddof = 1))  # Left input vs attention layer
+        
+        wsmi_right_input_attleft.append(np.mean(wsmi_results['left'][tau][1, 2, :]))  # Right input vs attention layer
+        wsmi_right_input_attleft_stdev.append(np.std(wsmi_results['left'][tau][1, 2, :], ddof = 1))  # Right input vs attention layer
+
+        # For attention right
+        wsmi_left_input_attright.append(np.mean(wsmi_results['right'][tau][0, 2, :]))  # Left input vs attention layer
+        wsmi_left_input_attright_stdev.append(np.std(wsmi_results['right'][tau][0, 2, :], ddof = 1))  # Left input vs attention layer
+
+        wsmi_right_input_attright.append(np.mean(wsmi_results['right'][tau][1, 2, :]))  # Right input vs attention layer
+        wsmi_right_input_attright_stdev.append(np.std(wsmi_results['right'][tau][1, 2, :], ddof = 1))  # Right input vs attention layer
+
+    for tau in taus:
+        if wsmi_left_input_attleft[taus.index(tau)] > wsmi_right_input_attleft[taus.index(tau)]:
+            results[f'dataset_{file_number}']['attention_left']['larger wsmi'].append(0)
+        else:
+            results[f'dataset_{file_number}']['attention_left']['larger wsmi'].append(1)
+
+        if wsmi_left_input_attright[taus.index(tau)] > wsmi_right_input_attright[taus.index(tau)]:
+            results[f'dataset_{file_number}']['attention_right']['larger wsmi'].append(0)
+        else:
+            results[f'dataset_{file_number}']['attention_right']['larger wsmi'].append(1)
+
+    for tau in taus:
+        wsmi_means[f'dataset_{file_number}']['left_attleft'].append(np.mean(wsmi_results['left'][tau][0, 2, :]))
+        wsmi_means[f'dataset_{file_number}']['right_attleft'].append(np.mean(wsmi_results['left'][tau][1, 2, :]))
+        wsmi_means[f'dataset_{file_number}']['left_attright'].append(np.mean(wsmi_results['right'][tau][0, 2, :]))
+        wsmi_means[f'dataset_{file_number}']['right_attright'].append(np.mean(wsmi_results['right'][tau][1, 2, :]))
+
+        wsmi_stdevs[f'dataset_{file_number}']['left_attleft'].append(np.std(wsmi_results['left'][tau][0, 2, :], ddof = 1))
+        wsmi_stdevs[f'dataset_{file_number}']['right_attleft'].append(np.std(wsmi_results['left'][tau][1, 2, :], ddof = 1))
+        wsmi_stdevs[f'dataset_{file_number}']['left_attright'].append(np.std(wsmi_results['right'][tau][0, 2, :], ddof = 1))
+        wsmi_stdevs[f'dataset_{file_number}']['right_attright'].append(np.std(wsmi_results['right'][tau][1, 2, :], ddof = 1))
+
+
+    # fig, axs = plt.subplots(1, 2, figsize=(12, 6), sharey=True)
+
+    # #left subplot
+    # axs[0].errorbar(taus, wsmi_left_input_attleft, yerr=wsmi_left_input_attleft_stdev, fmt='x', color='r', label="Left Input vs Attention Layer", capsize=5)
+    # axs[0].errorbar(taus, wsmi_right_input_attleft, yerr=wsmi_right_input_attleft_stdev, fmt='x', color='k', label="Right Input vs Attention Layer", capsize=5)
+    # axs[0].set_title("Attention Left", fontsize=14)
+    # axs[0].set_xlabel("τ (ms)", fontsize=12)
+    # axs[0].set_ylabel("Average wSMI", fontsize=12)
+    # axs[0].legend()
+    # axs[0].grid(False)
+
+    # #right subplot
+    # axs[1].errorbar(taus, wsmi_left_input_attright, yerr=wsmi_left_input_attright_stdev, fmt='x', color='r', label="Left Input vs Attention Layer", capsize=5)
+    # axs[1].errorbar(taus, wsmi_right_input_attright, yerr=wsmi_right_input_attright_stdev, fmt='x', color='k', label="Right Input vs Attention Layer", capsize=5)
+    # axs[1].set_title("Attention Right", fontsize=14)
+    # axs[1].set_xlabel("τ (ms)", fontsize=12)
+    # axs[1].legend()
+    # axs[1].grid(False)
+
+    # plt.tight_layout()
+    # plt.show()
+
+
+    # print('wsmi_results.shape', wsmi_results['left'][8].shape)
+    # #wsmi_results.shape (3, 3, 468), so get a 3x3 for each trial. note that values for performing a single trial are different to 
+    # #extracting the wsmi value of the first trial from wsmi_results. unsure why. 
+
+    # for tau_to_check in taus:
+    #     wsmi_first_trial_left = wsmi_results['left'][tau_to_check][:, :, 0] 
+    #     print(f"wSMI matrix for the first trial (attention left) at tau={tau_to_check} ms:\n", wsmi_first_trial_left)
+
+
+    attleft_pearson_left = []
+    attleft_pearson_right = []
+    attright_pearson_left = []
+    attright_pearson_right = []
+
+    for i in range(len(left_indices)):
+        corr_left, _ = pearsonr(left_input_LFP_om_left_relevant[i], attention_LFP_om_left_relevant[i])
+        attleft_pearson_left.append(corr_left)
+        corr_right, _ = pearsonr(right_input_LFP_om_left_relevant[i], attention_LFP_om_left_relevant[i])
+        attleft_pearson_right.append(corr_right)
+
+    for i in range(len(right_indices)):
+        corr_left, _ = pearsonr(left_input_LFP_om_right_relevant[i], attention_LFP_om_right_relevant[i])
+        attright_pearson_left.append(corr_left)
+        corr_right, _ = pearsonr(right_input_LFP_om_right_relevant[i], attention_LFP_om_right_relevant[i])
+        attright_pearson_right.append(corr_right)
+
+    mean_corr_left_attleft = np.mean(attleft_pearson_left)
+    mean_corr_right_attleft = np.mean(attleft_pearson_right)
+    mean_corr_left_attright = np.mean(attright_pearson_left)
+    mean_corr_right_attright = np.mean(attright_pearson_right)
+
+
+    if mean_corr_left_attleft > mean_corr_right_attleft:
+        results[f'dataset_{file_number}']['attention_left']['larger pearson'].append(0)
+    else:
+        results[f'dataset_{file_number}']['attention_left']['larger pearson'].append(1)
+
+    if mean_corr_left_attright > mean_corr_right_attright:
+        results[f'dataset_{file_number}']['attention_right']['larger pearson'].append(0)
+    else:
+        results[f'dataset_{file_number}']['attention_right']['larger pearson'].append(1)
+
+    
+    # x = [0, 1]
+    # fig, axs = plt.subplots(1, 2, figsize=(12, 6))
+    # axs[0].scatter(x, [mean_corr_left_attleft, mean_corr_right_attleft],
+    #             label="Attention Left", color='k', marker='x', s=100)
+    # axs[1].scatter(x, [mean_corr_left_attright, mean_corr_right_attright],
+    #             label="Attention Right", color='k', marker='x', s=100)
+
+    # for ax in axs:
+    #     ax.set_xticks(x)
+    #     ax.set_xticklabels(['left', 'right'])
+    #     ax.set_xlim(-0.7, 1.7)
+
+    # axs[0].set_title("Attention Left", fontsize=14)
+    # axs[1].set_title("Attention Right", fontsize=14)
+    # axs[0].set_ylabel("Mean Pearson Correlation", fontsize=12)
+    # axs[1].set_ylabel("Mean Pearson Correlation", fontsize=12)
+
+    # axs[0].grid(False)
+    # axs[1].grid(False)
+
+    # plt.tight_layout()
+    # plt.show()
+
+       
+print(results)
+
+mean_wsmi_left_attleft = []
+mean_wsmi_right_attleft = []
+mean_wsmi_left_attright = []
+mean_wsmi_right_attright = []
+
+stdev_wsmi_left_attleft = []
+stdev_wsmi_right_attleft = []
+stdev_wsmi_left_attright = []
+stdev_wsmi_right_attright = []
+
+taus = [0, 1, 2, 3, 4]
+
+for tau_idx in taus:
+    mean_wsmi_left_attleft.append(np.mean([(wsmi_means[f'dataset_{dataset}']['left_attleft'][tau_idx]) for dataset in i_values]))
+    mean_wsmi_right_attleft.append(np.mean([(wsmi_means[f'dataset_{dataset}']['right_attleft'][tau_idx]) for dataset in i_values]))
+    mean_wsmi_left_attright.append(np.mean([(wsmi_means[f'dataset_{dataset}']['left_attright'][tau_idx]) for dataset in i_values]))
+    mean_wsmi_right_attright.append(np.mean([(wsmi_means[f'dataset_{dataset}']['right_attright'][tau_idx]) for dataset in i_values]))
+
+    stdev_wsmi_left_attleft.append(np.sqrt(np.sum([wsmi_stdevs[f'dataset_{dataset}']['left_attleft'][tau_idx]**2 for dataset in i_values])) / len(i_values))
+    stdev_wsmi_right_attleft.append(np.sqrt(np.sum([wsmi_stdevs[f'dataset_{dataset}']['right_attleft'][tau_idx]**2 for dataset in i_values])) / len(i_values))
+    stdev_wsmi_left_attright.append(np.sqrt(np.sum([wsmi_stdevs[f'dataset_{dataset}']['left_attright'][tau_idx]**2 for dataset in i_values])) / len(i_values))
+    stdev_wsmi_right_attright.append(np.sqrt(np.sum([wsmi_stdevs[f'dataset_{dataset}']['right_attright'][tau_idx]**2 for dataset in i_values])) / len(i_values))
+
+
+
+print("mean_wsmi_left_attleft", mean_wsmi_left_attleft)
+print("std_wsmi_left_attleft", stdev_wsmi_left_attleft)
+
+taus = [4, 8, 16, 32, 64]                                 
+fig, axs = plt.subplots(1, 2, figsize=(12, 6), sharey=True)
+
+#left subplot
+axs[0].errorbar(taus, mean_wsmi_left_attleft, yerr=stdev_wsmi_left_attleft, fmt='x', color='r', label="Left Input vs Attention Layer", capsize=5)
+axs[0].errorbar(taus, mean_wsmi_right_attleft, yerr=stdev_wsmi_right_attleft, fmt='x', color='k', label="Right Input vs Attention Layer", capsize=5)
+axs[0].set_title("wSMI - Attention Left - LFP", fontsize=14)
+axs[0].set_xlabel("τ (ms)", fontsize=12)
+axs[0].set_ylabel("Average wSMI", fontsize=12)
+axs[0].legend()
+axs[0].grid(False)
+
+#right subplot
+axs[1].errorbar(taus, mean_wsmi_left_attright, yerr=stdev_wsmi_left_attright, fmt='x', color='r', label="Left Input vs Attention Layer", capsize=5)
+axs[1].errorbar(taus, mean_wsmi_right_attright, yerr=stdev_wsmi_right_attright, fmt='x', color='k', label="Right Input vs Attention Layer", capsize=5)
+axs[1].set_title("wSMI - Attention Right - LFP", fontsize=14)
+axs[1].set_xlabel("τ (ms)", fontsize=12)
+axs[1].legend()
+axs[1].grid(False)
+
+plt.tight_layout()
+plt.show()
+
+
+
+mean_wsmi_left_attleft = np.array(mean_wsmi_left_attleft)
+mean_wsmi_right_attleft = np.array(mean_wsmi_right_attleft)
+mean_wsmi_left_attright = np.array(mean_wsmi_left_attright)
+mean_wsmi_right_attright = np.array(mean_wsmi_right_attright)
+
+
+
+#--------t-test on averages ----------------
+
+print('----- averaged across datasets -----')
+mean_wsmi_left_attleft = np.array(mean_wsmi_left_attleft)
+mean_wsmi_right_attleft = np.array(mean_wsmi_right_attleft)
+mean_wsmi_left_attright = np.array(mean_wsmi_left_attright)
+mean_wsmi_right_attright = np.array(mean_wsmi_right_attright)
+
+
+t_stat, p_value = ttest_rel(mean_wsmi_left_attleft, mean_wsmi_right_attleft)
+print('--left--')
+print(f"t-statistic: {t_stat}")
+print(f"p-value: {p_value}")
+
+t_stat, p_value = ttest_rel(mean_wsmi_left_attright, mean_wsmi_right_attright)
+print('--right--')
+print(f"t-statistic: {t_stat}")
+print(f"p-value: {p_value}")
+
+
+#---------dont want to do this ^^^^, want to do t-test for each session (dependent) -----------------
+
+
+print('----- for each dataset -----')
+
+for dataset in i_values:
+    t_stat, p_value = ttest_rel(wsmi_means[f'dataset_{dataset}']['left_attleft'], wsmi_means[f'dataset_{dataset}']['right_attleft'])
+    print('--left--')
+    print(f"t-statistic: {t_stat}")
+    print(f"p-value: {p_value}")
+
+    t_stat, p_value = ttest_rel(wsmi_means[f'dataset_{dataset}']['left_attright'], wsmi_means[f'dataset_{dataset}']['right_attright'])
+    print('--right--')
+    print(f"t-statistic: {t_stat}")
+    print(f"p-value: {p_value}")
+
+
+ 

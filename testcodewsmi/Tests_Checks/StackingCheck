@@ -1,0 +1,88 @@
+import numpy as np
+
+
+##might need to look to compute only when attention is taking non-0 values?
+
+
+data1 = [1,2,3]
+data2 = [4,5,6]
+data3 = [7,8,9]
+
+stack = np.stack([data1, data2, data3], axis = 1).reshape(3, -1)
+print(stack)
+
+stack = np.stack([data1, data2, data3])
+print(stack)
+
+import numpy as np
+import mne
+import pickle
+import matplotlib.pyplot as plt
+from nice.algorithms.connectivity import epochs_compute_wsmi
+np.set_printoptions(threshold=900)  #default threshold
+
+#load data
+file_path = 'C:/Users/joshu/PartIIIProject/RSNNdale_attention_1_attention_test'
+data = pickle.load(open(file_path, 'rb'))
+
+attention_labels = data['label_attend'][0]
+label_left = data['label_left'][0]
+label_right = data['label_right'][0]
+attend_01 = data['attend'][0]
+
+
+#not filtered for omitted trials 
+left_input_LFP = data['LFP'][0][0]  # Left input  [0,1] means left, Right 
+right_input_LFP = data['LFP'][0][1]  # Right input
+attention_LFP = data['LFP_rec'][0][2]  # Attention layer  [2] means attention 
+omitted = data["omit"][0]
+
+
+# attend [11. 14. 18. 15.  2.  5. 12. 16.  2.  0.]
+# label_left [11. 14.  6. 18.  2.  5.  6. 10.  3. 14.]
+# label_right [15. 12. 18. 15. 12. 18. 12. 16.  2.  0.]
+#attend01 [0. 0. 1. 1. 0. 0. 1. 1. 1. 1.]
+#omitted [0. 0. 1. 1. 0. 1. 0. 1. 1. 1.]
+
+
+trial_idx = 0
+left_input_trial = left_input_LFP[trial_idx]
+right_input_trial= right_input_LFP[trial_idx]
+attention_trial = attention_LFP[trial_idx]
+
+print("left_input_trial", left_input_trial[0:20])
+print("right_input_trial", right_input_trial[0:20])
+print("attention_trial", attention_trial[0:20])
+
+
+raw_data_raw = np.stack([left_input_trial, right_input_trial, attention_trial])  #this seems to do what we want
+print(raw_data_raw.shape)
+print(raw_data_raw)
+
+
+
+# left_input_trial [  0.           8.30495834   6.72716999...
+                 
+# right_input_trial [  0.          14.40653515  30.48147774...
+                   
+# attention_trial [0.        0.      0. ...
+
+
+# (3, 500)
+# [[   0.            0.            0.         ...  131.14562988
+#   1399.52685547 2741.84375   ]
+
+#  [  51.025383   1510.13720703 2664.60693359 ...  235.78753662
+#     28.78291321  288.75839233]
+
+#  [ 205.04690552   24.47948837  251.67985535 ...   71.67674255
+#     75.87743378    0.        ]]
+
+
+# (3, 500)
+# [[ 0.          8.30495834  6.72716999 ... 75.45306396 79.49226379
+#   71.67674255]
+#  [ 0.         14.40653515 30.48147774 ... 88.97128296 76.07688904
+#   75.87743378]
+#  [ 0.          0.          0.         ...  0.          0.
+#    0.        ]]

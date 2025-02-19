@@ -1,0 +1,483 @@
+import numpy as np
+import mne
+import pickle
+import matplotlib.pyplot as plt
+from nice.algorithms.connectivity import epochs_compute_wsmi
+np.set_printoptions(threshold=100)  
+mne.set_log_level('WARNING')  
+import warnings
+warnings.filterwarnings("ignore")
+from scipy.ndimage import gaussian_filter1d
+from scipy.stats import pearsonr
+from scipy.stats import ttest_rel
+
+#---this calculates wsmi and pearson for spiking data
+
+
+i_values = [1, 2, 3, 4, 8, 14, 15, 20, 23]
+
+results = {}
+for store in i_values:
+    results[f'dataset_{store}'] = {
+        'attention_left': {
+            'larger wsmi': [],
+            'larger pearson': [],
+      
+        },
+        'attention_right': {
+            'larger wsmi': [],
+            'larger pearson': [],
+        
+        }
+    }
+
+wsmi_means = {}
+wsmi_stdevs = {}
+for dataset in i_values:
+    wsmi_means[f'dataset_{dataset}'] = {
+        'left_attleft': [],
+        'right_attleft': [],
+        'left_attright': [],
+        'right_attright': []
+    }
+    
+    wsmi_stdevs[f'dataset_{dataset}'] = {
+        'left_attleft': [],
+        'right_attleft': [],
+        'left_attright': [],
+        'right_attright': []
+    }
+
+
+
+for file_number in i_values:
+    # Load data
+
+    file_path = f'C:/Users/joshu/PartIIIProject/RSNNdale_attention_{file_number}_attention_test'
+    data = pickle.load(open(file_path, 'rb'))
+
+    left_input_SP = data['SP'][0][0] 
+    right_input_SP = data['SP'][0][1]
+    attention_SP = data['SP'][0][2]
+    label_left = data['label_left'][0]
+    label_right = data['label_right'][0]
+    # left_input_SP (2032, 500, 160)
+    # right_input_SP (2032, 500, 160)
+    # attention_SP (2032, 500, 80)
+    
+
+    attend_left_not_omitted = np.where((data["attend"][0] == 0) & (data["omit"][0] == 0) & (label_left != label_right))[0]
+    attend_right_not_omitted = np.where((data["attend"][0] == 1) & (data["omit"][0] == 0) & (label_left != label_right))[0]
+
+    # attend_left_not_omitted = np.where((data["attend"][0] == 0) & (data["omit"][0] == 0))[0]
+    # attend_right_not_omitted = np.where((data["attend"][0] == 1) & (data["omit"][0] == 0))[0]
+
+    left_input_attendingleft_t = left_input_SP[attend_left_not_omitted, 100:350, :]
+    right_input_attendingleft_t = right_input_SP[attend_left_not_omitted, 100:350, :]
+    attention_layer_attendingleft_t = attention_SP[attend_left_not_omitted, 100:350, :]
+
+    left_input_attendingright_t = left_input_SP[attend_right_not_omitted, 100:350, :]
+    right_input_attendingright_t = right_input_SP[attend_right_not_omitted, 100:350, :]
+    attention_layer_attendingright_t = attention_SP[attend_right_not_omitted, 100:350, :]
+
+    #eft_input_attendingleft_t (468, 250, 160) (80 for attention)
+    #left_input_attendingright_t (536, 250, 160) (80 for attention)
+
+    from scipy.ndimage import gaussian_filter1d
+
+    def smooth_with_gaussian(data, sigma=3):
+        return gaussian_filter1d(data, sigma=sigma, axis=1) 
+
+    sigma = 2
+
+    left_in_attleft_sm = smooth_with_gaussian(left_input_attendingleft_t, sigma=sigma) 
+    right_in_attleft_sm = smooth_with_gaussian(right_input_attendingleft_t, sigma=sigma) 
+    attlay_attleft_sm = smooth_with_gaussian(attention_layer_attendingleft_t, sigma=sigma) 
+
+    left_in_attright_sm = smooth_with_gaussian(left_input_attendingright_t, sigma=sigma) 
+    right_in_attright_sm = smooth_with_gaussian(right_input_attendingright_t, sigma=sigma)
+    attlay_attright_sm = smooth_with_gaussian(attention_layer_attendingright_t, sigma=sigma)
+
+
+    num_trials_left, num_samples, num_neurons_left = left_input_attendingleft_t.shape
+    num_trials_right = left_input_attendingright_t.shape[0]
+    num_neurons_attention = 80
+
+            
+    for j in range(0, num_trials_left):
+        for i in range(0, num_neurons_left):
+            count_left = np.count_nonzero(left_input_attendingleft_t[j, :, i] == 1)
+            if count_left > 0:
+                left_in_attleft_sm[j, :, i] /= count_left
+            count_right = np.count_nonzero(right_input_attendingleft_t[j, :, i] == 1)
+            if count_right > 0:
+                right_in_attleft_sm[j, :, i] /= count_right
+
+
+        for i in range(0, num_neurons_attention):
+            count_attention = np.count_nonzero(attention_layer_attendingleft_t[j, :, i] == 1)
+            if count_attention > 0:
+                attlay_attleft_sm[j, :, i] /= count_attention
+
+
+
+    for j in range(0, num_trials_right):
+        for i in range(0, num_neurons_left):
+            count_left = np.count_nonzero(left_input_attendingright_t[j, :, i] == 1)
+            if count_left > 0:
+                left_in_attright_sm[j, :, i] /= count_left
+            count_right = np.count_nonzero(right_input_attendingright_t[j, :, i] == 1)
+            if count_right > 0:
+                right_in_attright_sm[j, :, i] /= count_right    
+
+        for i in range(0, num_neurons_attention):
+            count_attention = np.count_nonzero(attention_layer_attendingright_t[j, :, i] == 1)
+            if count_attention > 0:
+                attlay_attright_sm[j, :, i] /= count_attention
+
+
+        
+    left_in_attleft_sum = np.sum(left_in_attleft_sm, axis=2)
+    right_in_attleft_sum = np.sum(right_in_attleft_sm, axis=2)
+    attlay_attleft_sum = np.sum(attlay_attleft_sm, axis=2)
+
+    left_in_attright_sum = np.sum(left_in_attright_sm, axis=2)
+    right_in_attright_sum = np.sum(right_in_attright_sm, axis=2)
+    attlay_attright_sum = np.sum(attlay_attright_sm, axis=2)
+
+
+
+    #   #plotting the mean across trials of all three data sets for when attention is left and right
+    # #can check here for linear trends, normalisation etc.
+    # fig, ax = plt.subplots(1, 2, figsize=(12, 6))
+    # # Plot for Attention Left
+    # ax[0].plot(np.mean(left_in_attleft_sum, axis=0), label="Left Input")
+    # ax[0].plot(np.mean(right_in_attleft_sum, axis=0), label="Right Input")
+    # ax[0].plot(np.mean(attlay_attleft_sum, axis=0), label="Attention Layer")
+    # ax[0].set_title("Attention Left")
+    # ax[0].set_xlabel("Time (ms)")
+    # ax[0].set_ylabel("Summed Activity")
+    # ax[0].legend()
+
+    # # Plot for Attention Right
+    # ax[1].plot(np.mean(left_in_attright_sum, axis=0), label="Left Input")
+    # ax[1].plot(np.mean(right_in_attright_sum, axis=0), label="Right Input")
+    # ax[1].plot(np.mean(attlay_attright_sum, axis=0), label="Attention Layer")
+    # ax[1].set_title("Attention Right")
+    # ax[1].set_xlabel("Time (ms)")
+    # ax[1].set_ylabel("Summed Activity")
+    # ax[1].legend()
+
+    # plt.show()
+    # ## see a decaying exponential for this data when you dont zscore and detrend
+
+
+   
+    n_samples = left_in_attleft_sum.shape[1]   ##change this for correct time 
+    print("n_samples:", n_samples)
+
+    dt = 0.002
+    sfreq = 1 / dt  # Sampling frequency
+
+    ch_names = ['left_input', 'right_input', 'attention_layer']
+    ch_types = ['eeg', 'eeg', 'eeg']
+    info = mne.create_info(ch_names=ch_names, sfreq=sfreq, ch_types=ch_types)
+
+
+    #reshaping data for attention left
+    raw_data_left = np.concatenate([
+        left_in_attleft_sum, 
+        right_in_attleft_sum, 
+        attlay_attleft_sum
+    ], axis=0)  # Concatenate along time axis
+
+    # Reshape into (n_channels, n_samples)
+    raw_data_left = raw_data_left.reshape(3, -1)
+    raw_left = mne.io.RawArray(raw_data_left, info)
+
+
+
+    #reshaping data for attention right
+    raw_data_right = np.concatenate([
+        left_in_attright_sum, 
+        right_in_attright_sum, 
+        attlay_attright_sum
+    ], axis=0)  # Concatenate along time axis
+
+    # Reshape into (n_channels, n_samples)
+    raw_data_right = raw_data_right.reshape(3, -1)
+    raw_right = mne.io.RawArray(raw_data_right, info)
+
+
+    events_left = np.array([[i * n_samples, 0, 1] for i in range(len(attend_left_not_omitted))])
+    events_right = np.array([[i * n_samples, 0, 1] for i in range(len(attend_right_not_omitted))])
+
+
+    epochs_left = mne.Epochs(raw_left, events_left, event_id={'Trial': 1}, tmin = 0.1, tmax = 0.35, baseline=None, preload=True)
+    epochs_right = mne.Epochs(raw_right, events_right, event_id={'Trial': 1}, tmin = 0.1, tmax = 0.35, baseline=None, preload=True)
+    print(epochs_right.times)
+    # epochs_left.plot(n_epochs=5, n_channels=3, scalings = '1', title="Attention Left")
+    # plt.show()
+
+
+    #wSMI for each condition
+    kernel = 3
+    taus = [4, 8, 16, 32, 64]  # in ms
+    wsmi_results = {'left': {}, 'right': {}}
+
+
+    print(f"tau_samples for {taus}: {[int(t / (1000 / sfreq)) for t in taus]}")
+
+    for tau_ms in taus:
+        tau_samples = int(tau_ms / (1000 / sfreq))  # Convert ms to samples
+        
+
+        #wSMI for attention left
+        wsmi_left, _, _, _ = epochs_compute_wsmi(
+            epochs_left, kernel=kernel, tau=tau_samples, backend='python', method_params={'bypass_csd': True}
+        )
+        wsmi_results['left'][tau_ms] = wsmi_left
+        
+
+        #wSMI for attention right
+        wsmi_right, _, _, _ = epochs_compute_wsmi(
+            epochs_right, kernel=kernel, tau=tau_samples, backend='python', method_params={'bypass_csd': True}
+        )
+        wsmi_results['right'][tau_ms] = wsmi_right
+
+
+    wsmi_left_attleft = []  #wSMI for left input vs attention layer (attention left)
+    wsmi_right_attleft = []  #wSMI for right input vs attention layer (attention left)
+    wsmi_left_attright = []  #wSMI for left input vs attention layer (attention right)
+    wsmi_right_attright = []  #wSMI for right input vs attention layer (attention right)
+    wsmi_left_attleft_stdev = []
+    wsmi_right_attleft_stdev = []
+    wsmi_left_attright_stdev = []
+    wsmi_right_attright_stdev = []
+
+    #average wSMI for each τ for each condition
+    for tau in taus:
+        # For attention left
+        wsmi_left_attleft.append(np.mean(wsmi_results['left'][tau][0, 2, :]))  # Left input vs attention layer
+        wsmi_left_attleft_stdev.append(np.std(wsmi_results['left'][tau][0, 2, :], ddof = 1))  # Left input vs attention layer
+
+        wsmi_right_attleft.append(np.mean(wsmi_results['left'][tau][1, 2, :]))  # Right input vs attention layer
+        wsmi_right_attleft_stdev.append(np.std(wsmi_results['left'][tau][1, 2, :], ddof = 1))  # Right input vs attention layer
+
+        # For attention right
+        wsmi_left_attright.append(np.mean(wsmi_results['right'][tau][0, 2, :]))  # Left input vs attention layer
+        wsmi_left_attright_stdev.append(np.std(wsmi_results['right'][tau][0, 2, :], ddof = 1))  # Left input vs attention layer
+
+        wsmi_right_attright.append(np.mean(wsmi_results['right'][tau][1, 2, :]))  # Right input vs attention layer
+        wsmi_right_attright_stdev.append(np.std(wsmi_results['right'][tau][1, 2, :], ddof = 1))  # Right input vs attention layer
+ 
+    for tau in taus:
+        if wsmi_left_attleft[taus.index(tau)] > wsmi_right_attleft[taus.index(tau)]:
+            results[f'dataset_{file_number}']['attention_left']['larger wsmi'].append(0)
+        else:
+            results[f'dataset_{file_number}']['attention_left']['larger wsmi'].append(1)
+
+        if wsmi_left_attright[taus.index(tau)] > wsmi_right_attright[taus.index(tau)]:
+            results[f'dataset_{file_number}']['attention_right']['larger wsmi'].append(0)
+        else:
+            results[f'dataset_{file_number}']['attention_right']['larger wsmi'].append(1)
+
+    
+    for tau in taus:
+        wsmi_means[f'dataset_{file_number}']['left_attleft'].append(np.mean(wsmi_results['left'][tau][0, 2, :]))
+        wsmi_means[f'dataset_{file_number}']['right_attleft'].append(np.mean(wsmi_results['left'][tau][1, 2, :]))
+        wsmi_means[f'dataset_{file_number}']['left_attright'].append(np.mean(wsmi_results['right'][tau][0, 2, :]))
+        wsmi_means[f'dataset_{file_number}']['right_attright'].append(np.mean(wsmi_results['right'][tau][1, 2, :]))
+
+        wsmi_stdevs[f'dataset_{file_number}']['left_attleft'].append(np.std(wsmi_results['left'][tau][0, 2, :], ddof = 1))
+        wsmi_stdevs[f'dataset_{file_number}']['right_attleft'].append(np.std(wsmi_results['left'][tau][1, 2, :], ddof = 1))
+        wsmi_stdevs[f'dataset_{file_number}']['left_attright'].append(np.std(wsmi_results['right'][tau][0, 2, :], ddof = 1))
+        wsmi_stdevs[f'dataset_{file_number}']['right_attright'].append(np.std(wsmi_results['right'][tau][1, 2, :], ddof = 1))
+
+
+    
+    # fig, axs = plt.subplots(1, 2, figsize=(12, 6), sharey=True)
+
+    # #left subplot
+    # axs[0].scatter(taus, wsmi_left_attleft, label="Left Input vs Attention Layer", marker="x",color = 'r', s=100)
+    # axs[0].scatter(taus, wsmi_right_attleft, label="Right Input vs Attention Layer", marker="x",color = 'k', s=100)
+    # axs[0].set_title(f"Attention Left - Dataset {file_number}", fontsize=14)
+    # axs[0].set_xlabel("τ (ms)", fontsize=12)
+    # axs[0].set_ylabel("Average wSMI", fontsize=12)
+    # axs[0].legend()
+    # axs[0].grid(False)
+
+    # #right subplot
+    # axs[1].scatter(taus, wsmi_left_attright, label="Left Input vs Attention Layer", marker="x", color = 'r', s=100)
+    # axs[1].scatter(taus, wsmi_right_attright, label="Right Input vs Attention Layer", marker="x",color = 'k', s=100)
+    # axs[1].set_title(f"Attention Right - Dataset {file_number}", fontsize=14)
+    # axs[1].set_xlabel("τ (ms)", fontsize=12)
+    # axs[1].legend()
+    # axs[1].grid(False)
+
+    # plt.tight_layout()
+    # plt.show()
+
+
+
+
+
+    attleft_pearson_left = []
+    attleft_pearson_right = []
+    attright_pearson_left = []
+    attright_pearson_right = []
+
+
+    for i in range(len(attend_left_not_omitted)):
+        corr_left, _ = pearsonr(left_in_attleft_sum[i], attlay_attleft_sum[i])
+        attleft_pearson_left.append(corr_left)
+        corr_right, _ = pearsonr(right_in_attleft_sum[i], attlay_attleft_sum[i])
+        attleft_pearson_right.append(corr_right)
+
+    for i in range(len(attend_right_not_omitted)):
+        corr_left, _ = pearsonr(left_in_attright_sum[i], attlay_attright_sum[i])
+        attright_pearson_left.append(corr_left)
+        corr_right, _ = pearsonr(right_in_attright_sum[i], attlay_attright_sum[i])
+        attright_pearson_right.append(corr_right)
+ 
+
+    mean_corr_left_attleft = np.mean(attleft_pearson_left)
+    mean_corr_right_attleft = np.mean(attleft_pearson_right)
+    mean_corr_left_attright = np.mean(attright_pearson_left)
+    mean_corr_right_attright = np.mean(attright_pearson_right)
+
+    if mean_corr_left_attleft > mean_corr_right_attleft:
+        results[f'dataset_{file_number}']['attention_left']['larger pearson'].append(0)
+    else:
+        results[f'dataset_{file_number}']['attention_left']['larger pearson'].append(1)
+
+    if mean_corr_left_attright > mean_corr_right_attright:
+        results[f'dataset_{file_number}']['attention_right']['larger pearson'].append(0)
+    else:
+        results[f'dataset_{file_number}']['attention_right']['larger pearson'].append(1)
+
+
+
+    # # Instead of x_axis = ['left', 'right'], use numeric x positions:
+    # x = [0, 1]
+
+    # # figure with two subplots
+    # fig, axs = plt.subplots(1, 2, figsize=(6, 3))
+
+    # # Plot using the numeric x positions
+    # axs[0].scatter(x, [mean_corr_left_attleft, mean_corr_right_attleft],
+    #             label="Attention Left", color='k', marker='x', s=100)
+    # axs[1].scatter(x, [mean_corr_left_attright, mean_corr_right_attright],
+    #             label="Attention Right", color='k', marker='x', s=100)
+
+    # # Setting x-tick positions and labels for each subplot
+    # for ax in axs:
+    #     ax.set_xticks(x)
+    #     ax.set_xticklabels(['left', 'right'])
+    #     # Optionally, adjust x-limits to make the points closer to the center:
+    #     ax.set_xlim(-0.5, 1.5)
+
+    # axs[0].set_title(f"Attention Left - Dataset {file_number}", fontsize=14)
+    # axs[1].set_title(f"Attention Right - Dataset {file_number}", fontsize=14)
+    # axs[0].set_ylabel("Mean Pearson Correlation", fontsize=12)
+    # axs[1].set_ylabel("Mean Pearson Correlation", fontsize=12)
+
+    # axs[0].grid(False)
+    # axs[1].grid(False)
+
+    # plt.tight_layout()
+    # plt.show()
+
+
+print(results)
+
+mean_wsmi_left_attleft = []
+mean_wsmi_right_attleft = []
+mean_wsmi_left_attright = []
+mean_wsmi_right_attright = []
+
+stdev_wsmi_left_attleft = []
+stdev_wsmi_right_attleft = []
+stdev_wsmi_left_attright = []
+stdev_wsmi_right_attright = []
+
+
+print(wsmi_means)
+print(wsmi_stdevs)
+#plotting the averages across datasets for wsmi
+taus = [0, 1, 2, 3, 4]
+for tau_idx in taus:
+    mean_wsmi_left_attleft.append(np.mean([(wsmi_means[f'dataset_{dataset}']['left_attleft'][tau_idx]) for dataset in i_values]))
+    mean_wsmi_right_attleft.append(np.mean([(wsmi_means[f'dataset_{dataset}']['right_attleft'][tau_idx]) for dataset in i_values]))
+    mean_wsmi_left_attright.append(np.mean([(wsmi_means[f'dataset_{dataset}']['left_attright'][tau_idx]) for dataset in i_values]))
+    mean_wsmi_right_attright.append(np.mean([(wsmi_means[f'dataset_{dataset}']['right_attright'][tau_idx]) for dataset in i_values]))
+
+    stdev_wsmi_left_attleft.append(np.sqrt(np.sum([(wsmi_stdevs[f'dataset_{dataset}']['left_attleft'][tau_idx])**2 for dataset in i_values])) / len(i_values))
+    stdev_wsmi_right_attleft.append(np.sqrt(np.sum([(wsmi_stdevs[f'dataset_{dataset}']['right_attleft'][tau_idx])**2 for dataset in i_values])) /  len(i_values))
+    stdev_wsmi_left_attright.append(np.sqrt(np.sum([(wsmi_stdevs[f'dataset_{dataset}']['left_attright'][tau_idx])**2 for dataset in i_values])) /  len(i_values))
+    stdev_wsmi_right_attright.append(np.sqrt(np.sum([(wsmi_stdevs[f'dataset_{dataset}']['right_attright'][tau_idx])**2 for dataset in i_values])) /  len(i_values))
+
+print("mean_wsmi_left_attleft", mean_wsmi_left_attleft)
+print("std_wsmi_left_attleft", stdev_wsmi_left_attleft)
+
+taus = [4, 8, 16, 32, 64]                                 
+fig, axs = plt.subplots(1, 2, figsize=(12, 6), sharey=True)
+
+#left subplot
+axs[0].errorbar(taus, mean_wsmi_left_attleft, yerr=stdev_wsmi_left_attleft, fmt='x', color='r', label="Left Input vs Attention Layer", capsize=5)
+axs[0].errorbar(taus, mean_wsmi_right_attleft, yerr=stdev_wsmi_right_attleft, fmt='x', color='k', label="Right Input vs Attention Layer", capsize=5)
+axs[0].set_title("wSMI - Attention Left - SP - no corrections", fontsize=14)
+axs[0].set_xlabel("τ (ms)", fontsize=12)
+axs[0].set_ylabel("Average wSMI", fontsize=12)
+axs[0].legend()
+axs[0].grid(False)
+
+#right subplot
+axs[1].errorbar(taus, mean_wsmi_left_attright, yerr=stdev_wsmi_left_attright, fmt='x', color='r', label="Left Input vs Attention Layer", capsize=5)
+axs[1].errorbar(taus, mean_wsmi_right_attright, yerr=stdev_wsmi_right_attright, fmt='x', color='k', label="Right Input vs Attention Layer", capsize=5)
+axs[1].set_title("wSMI - Attention Right - SP - no corrections", fontsize=14)
+axs[1].set_xlabel("τ (ms)", fontsize=12)
+axs[1].legend()
+axs[1].grid(False)
+
+plt.tight_layout()
+#plt.show()
+
+
+#--------t-test on averages ----------------
+
+print('----- averaged across datasets -----')
+mean_wsmi_left_attleft = np.array(mean_wsmi_left_attleft)
+mean_wsmi_right_attleft = np.array(mean_wsmi_right_attleft)
+mean_wsmi_left_attright = np.array(mean_wsmi_left_attright)
+mean_wsmi_right_attright = np.array(mean_wsmi_right_attright)
+
+
+t_stat, p_value = ttest_rel(mean_wsmi_left_attleft, mean_wsmi_right_attleft)
+print('--left--')
+print(f"t-statistic: {t_stat}")
+print(f"p-value: {p_value}")
+
+t_stat, p_value = ttest_rel(mean_wsmi_left_attright, mean_wsmi_right_attright)
+print('--right--')
+print(f"t-statistic: {t_stat}")
+print(f"p-value: {p_value}")
+
+
+#---------dont want to do this ^^^^, want to do t-test for each session (dependent) -----------------
+
+
+print('----- for each dataset -----')
+
+for dataset in i_values:
+    t_stat, p_value = ttest_rel(wsmi_means[f'dataset_{dataset}']['left_attleft'], wsmi_means[f'dataset_{dataset}']['right_attleft'])
+    print('--left--')
+    print(f"t-statistic: {t_stat}")
+    print(f"p-value: {p_value}")
+
+    t_stat, p_value = ttest_rel(wsmi_means[f'dataset_{dataset}']['left_attright'], wsmi_means[f'dataset_{dataset}']['right_attright'])
+    print('--right--')
+    print(f"t-statistic: {t_stat}")
+    print(f"p-value: {p_value}")
+
+

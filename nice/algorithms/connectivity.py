@@ -34,8 +34,7 @@ def _get_weights_matrix(nsym):
     wts = np.fliplr(wts)
     np.fill_diagonal(wts, 0)
     wts = np.fliplr(wts)
-    return wts
-
+    return wts   #this makes a symmmetric matrix with 0 diagonal
 
 def epochs_compute_wsmi(epochs, kernel, tau, tmin=None, tmax=None,
                         backend='python', method_params=None, n_jobs='auto'):
@@ -46,7 +45,7 @@ def epochs_compute_wsmi(epochs, kernel, tau, tmin=None, tmax=None,
     epochs : instance of mne.Epochs
         The epochs on which to compute the wSMI.
     kernel : int
-        The number of samples to use to transform to a symbol
+        The number oymbf samples to use to transform to a symbol
     tau : int
         The number of samples left between the ones that defines a symbol.
     method_params : dictionary.
@@ -105,7 +104,7 @@ def epochs_compute_wsmi(epochs, kernel, tau, tmin=None, tmax=None,
     time_mask = _time_mask(epochs.times, tmin, tmax)
     fdata = fdata[:, time_mask, :]
     if backend == 'python':
-        from .information_theory.permutation_entropy import _symb_python
+        from nice.algorithms.information_theory.permutation_entropy import _symb_python
         logger.info("Performing symbolic transformation")
         sym, count = _symb_python(fdata, kernel, tau)
         nsym = count.shape[1]

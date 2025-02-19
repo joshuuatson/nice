@@ -1,0 +1,98 @@
+import numpy as np
+import mne
+import pickle
+import matplotlib.pyplot as plt
+from nice.algorithms.connectivity import epochs_compute_wsmi
+
+np.set_printoptions(threshold=900)  # Default threshold
+
+# Load data
+file_path = 'C:/Users/joshu/PartIIIProject/RSNNdale_attention_1_attention_test'
+data = pickle.load(open(file_path, 'rb'))
+
+# Extract relevant data
+attention_labels = data['label_attend'][0]
+label_left = data['label_left'][0]
+label_right = data['label_right'][0]
+attend_01 = data['attend'][0]
+left_input_LFP = data['LFP'][0][0]  # Left input
+right_input_LFP = data['LFP'][0][1]  # Right input
+attention_LFP = data['LFP_rec'][0][2]  # Attention layer
+omitted = data["omit"][0]
+
+
+# Filter trials: Differing labels, not omitted
+class_different_indices = np.where((label_left != label_right) & (omitted == 0))[0]
+
+# Further split based on attention focus
+left_indices = np.where((label_left != label_right) & (omitted == 0) & (attend_01 == 0))[0]
+right_indices = np.where((label_left != label_right) & (omitted == 0) & (attend_01 == 1))[0]
+
+# Subset LFP data
+left_input_LFP_om_left = left_input_LFP[left_indices]
+right_input_LFP_om_left = right_input_LFP[left_indices]
+attention_LFP_om_left = attention_LFP[left_indices]
+
+left_input_LFP_om_right = left_input_LFP[right_indices]
+right_input_LFP_om_right = right_input_LFP[right_indices]
+attention_LFP_om_right = attention_LFP[right_indices]
+
+
+# Time and sampling details
+n_times = left_input_LFP.shape[1]
+n_trials = left_input_LFP_om_left.shape[0]
+dt = 0.002
+sfreq = 1 / dt
+
+
+# Create MNE info
+ch_names = ['left_input', 'right_input', 'attention_layer']
+ch_types = ['eeg', 'eeg', 'eeg']
+info = mne.create_info(ch_names=ch_names, sfreq=sfreq, ch_types=ch_types)
+
+# Create raw data for left-focused and right-focused trials
+raw_data_left = np.stack([left_input_LFP_om_left, right_input_LFP_om_left, attention_LFP_om_left], axis=1).reshape(3, -1)
+raw_data_right = np.stack([left_input_LFP_om_right, right_input_LFP_om_right, attention_LFP_om_right], axis=1).reshape(3, -1)
+
+raw_left = mne.io.RawArray(raw_data_left, info)
+raw_right = mne.io.RawArray(raw_data_right, info)
+
+# Debugging: Check raw data shapes
+print("Raw data shapes:")
+print("raw_data_left:", raw_data_left.shape)
+print("raw_data_right:", raw_data_right.shape)
+
+# Create events and epochs
+events_left = np.array([[i * n_times, 0, 1] for i in range(len(left_input_LFP_om_left))])
+events_right = np.array([[i * n_times, 0, 1] for i in range(len(right_input_LFP_om_right))])
+
+epochs_left = mne.Epochs(raw_left, events_left, event_id={'Trial': 1}, tmin=0, tmax=(n_times - 1) / sfreq, baseline=None, preload=True)
+epochs_right = mne.Epochs(raw_right, events_right, event_id={'Trial': 1}, tmin=0, tmax=(n_times - 1) / sfreq, baseline=None, preload=True)
+
+# epochs_left.plot(scalings = 0.75)
+# epochs_right.plot(scalings = 0.75)
+
+# Compute wSMI for different tau values
+kernel = 3
+taus = [8, 16, 32, 64]  # in ms
+wsmi_results = {'left': {}, 'right': {}}
+
+for tau in taus:
+    tau_samples = int(tau / (1000 / sfreq))
+    print(f"tau_samples for {tau}: {tau_samples}")
+    
+    wsmi_left, _, _, _ = epochs_compute_wsmi(
+        epochs_left, kernel=kernel, tau=tau_samples, backend='python', method_params={'bypass_csd': True}
+    )
+    wsmi_results['left'][tau] = wsmi_left
+
+    wsmi_right, _, _, _ = epochs_compute_wsmi(
+        epochs_right, kernel=kernel, tau=tau_samples, backend='python', method_params={'bypass_csd': True}
+    )
+    wsmi_results['right'][tau] = wsmi_right
+
+    # Debugging: Verify wSMI results
+    print(f"wSMI results (tau={tau}):")
+    print("Left trials:", wsmi_left)
+    print("Right trials:", wsmi_right)
+

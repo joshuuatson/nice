@@ -1,0 +1,166 @@
+import numpy as np
+import mne
+import pickle
+import matplotlib.pyplot as plt
+from coherence import field_field_coherence
+from scipy.ndimage import gaussian_filter1d
+from scipy.stats import zscore
+from scipy.signal import detrend
+
+def smooth_with_gaussian(data, sigma=3):
+    return gaussian_filter1d(data, sigma=sigma, axis=1) 
+
+#calculate coherence for the differnt bands
+
+
+
+i_values = [1, 2, 3, 4, 8, 14, 15, 20, 23]
+for file_number in i_values:
+    # Load data
+
+    file_path = f'C:/Users/joshu/PartIIIProject/RSNNdale_attention_{file_number}_attention_test'
+    data = pickle.load(open(file_path, 'rb'))
+
+    left_input_SP = data['SP'][0][0] 
+    right_input_SP = data['SP'][0][1]
+    attention_SP = data['SP'][0][2]
+    label_left = data['label_left'][0]
+    label_right = data['label_right'][0]
+    # left_input_SP (2032, 500, 160)
+    # right_input_SP (2032, 500, 160)
+    # attention_SP (2032, 500, 80)
+    
+
+    # attend_left_not_omitted = np.where((data["attend"][0] == 0) & (data["omit"][0] == 0) & (label_left != label_right))[0]
+    # attend_right_not_omitted = np.where((data["attend"][0] == 1) & (data["omit"][0] == 0) & (label_left != label_right))[0]
+
+    attend_left_not_omitted = np.where((data["attend"][0] == 0) & (data["omit"][0] == 0))[0]
+    attend_right_not_omitted = np.where((data["attend"][0] == 1) & (data["omit"][0] == 0))[0]
+
+    left_input_attendingleft_t = left_input_SP[attend_left_not_omitted, 100:350, :]
+    right_input_attendingleft_t = right_input_SP[attend_left_not_omitted, 100:350, :]
+    attention_layer_attendingleft_t = attention_SP[attend_left_not_omitted, 100:350, :]
+
+    left_input_attendingright_t = left_input_SP[attend_right_not_omitted, 100:350, :]
+    right_input_attendingright_t = right_input_SP[attend_right_not_omitted, 100:350, :]
+    attention_layer_attendingright_t = attention_SP[attend_right_not_omitted, 100:350, :]
+
+    #eft_input_attendingleft_t (468, 250, 160) (80 for attention)
+    #left_input_attendingright_t (536, 250, 160) (80 for attention)
+
+
+
+
+    sigma = 2
+
+    left_in_attleft_sm = smooth_with_gaussian(left_input_attendingleft_t, sigma=sigma) 
+    right_in_attleft_sm = smooth_with_gaussian(right_input_attendingleft_t, sigma=sigma) 
+    attlay_attleft_sm = smooth_with_gaussian(attention_layer_attendingleft_t, sigma=sigma) 
+
+    left_in_attright_sm = smooth_with_gaussian(left_input_attendingright_t, sigma=sigma) 
+    right_in_attright_sm = smooth_with_gaussian(right_input_attendingright_t, sigma=sigma)
+    attlay_attright_sm = smooth_with_gaussian(attention_layer_attendingright_t, sigma=sigma)
+
+
+    num_trials_left, num_samples, num_neurons_left = left_input_attendingleft_t.shape
+    num_trials_right = left_input_attendingright_t.shape[0]
+    num_neurons_attention = 80
+
+            
+    for j in range(0, num_trials_left):
+        for i in range(0, num_neurons_left):
+            count_left = np.count_nonzero(left_input_attendingleft_t[j, :, i] == 1)
+            if count_left > 0:
+                left_in_attleft_sm[j, :, i] /= count_left
+            count_right = np.count_nonzero(right_input_attendingleft_t[j, :, i] == 1)
+            if count_right > 0:
+                right_in_attleft_sm[j, :, i] /= count_right
+
+
+        for i in range(0, num_neurons_attention):
+            count_attention = np.count_nonzero(attention_layer_attendingleft_t[j, :, i] == 1)
+            if count_attention > 0:
+                attlay_attleft_sm[j, :, i] /= count_attention
+
+
+
+    for j in range(0, num_trials_right):
+        for i in range(0, num_neurons_left):
+            count_left = np.count_nonzero(left_input_attendingright_t[j, :, i] == 1)
+            if count_left > 0:
+                left_in_attright_sm[j, :, i] /= count_left
+            count_right = np.count_nonzero(right_input_attendingright_t[j, :, i] == 1)
+            if count_right > 0:
+                right_in_attright_sm[j, :, i] /= count_right    
+
+        for i in range(0, num_neurons_attention):
+            count_attention = np.count_nonzero(attention_layer_attendingright_t[j, :, i] == 1)
+            if count_attention > 0:
+                attlay_attright_sm[j, :, i] /= count_attention
+
+
+    left_in_attleft_sum = np.sum(left_in_attleft_sm, axis=2)
+    right_in_attleft_sum = np.sum(right_in_attleft_sm, axis=2)
+    attlay_attleft_sum = np.sum(attlay_attleft_sm, axis=2)
+
+    left_in_attright_sum = np.sum(left_in_attright_sm, axis=2)
+    right_in_attright_sum = np.sum(right_in_attright_sm, axis=2)
+    attlay_attright_sum = np.sum(attlay_attright_sm, axis=2)
+
+    n_samples = left_in_attleft_sum.shape[1]   ##change this for correct time 
+
+    dt = 0.002
+
+    # --- Computing Field-Field Coherence --
+
+    #for attention left condition:
+    left_in_coh_leftatt, freq = field_field_coherence(
+        left_in_attleft_sum,
+        attlay_attleft_sum,
+        dt
+    )
+    right_in_coh_leftatt, freq = field_field_coherence(
+        right_in_attleft_sum,
+        attlay_attleft_sum,
+        dt
+    )
+
+    #for attention right condition:
+    left_in_coh_rightatt, freq = field_field_coherence(
+        left_in_attright_sum,
+        attlay_attright_sum,
+        dt
+    )
+    right_in_coh_rightatt, freq = field_field_coherence(
+        right_in_attright_sum,
+        attlay_attright_sum,
+        dt
+    )
+
+    # Plotting the coherence results
+    plt.figure(figsize=(12, 6))
+
+    # Plot for attention left condition
+    plt.subplot(1, 2, 1)
+    plt.plot(freq, left_in_coh_leftatt, label='Left Input - Attention Layer', color = 'r')
+    plt.plot(freq, right_in_coh_leftatt, label='Right Input - Attention Layer', color = 'k')
+    plt.xlabel('Frequency (Hz)')
+    plt.ylabel('Coherence')
+    plt.title(f'Attention Left Condition - Dataset {file_number} - SP')
+    plt.legend()
+
+    # Plot for attention right condition
+    plt.subplot(1, 2, 2)
+    plt.plot(freq, left_in_coh_rightatt, label='Left Input - Attention Layer', color = 'r')
+    plt.plot(freq, right_in_coh_rightatt, label='Right Input - Attention Layer', color = 'k')
+    plt.xlabel('Frequency (Hz)')
+    plt.ylabel('Coherence')
+    plt.title(f'Attention Right Condition - Dataset {file_number} - SP')
+    plt.legend()
+
+    plt.tight_layout()
+    plt.show()
+
+
+
+

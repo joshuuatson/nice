@@ -30,7 +30,11 @@ import mne
 from nice import utils
 from nice.algorithms.connectivity import (epochs_compute_wsmi, _wsmi_python,
                                           _get_weights_matrix)
-from nice.algorithms.optimizations.jivaro import wsmi as jwsmi
+#from nice.algorithms.optimizations.jivaro import wsmi as jwsmi
+from nice.algorithms.optimizations import import_jivaro
+
+jivaro = import_jivaro()
+jwsmi = jivaro.wsmi ##tried this change to fix the error but it didn't work
 
 n_epochs = 3
 raw = utils.create_mock_data_egi(6, n_epochs * 386, stim=True)

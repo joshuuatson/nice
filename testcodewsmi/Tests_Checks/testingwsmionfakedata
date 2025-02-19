@@ -1,0 +1,146 @@
+import numpy as np
+import mne
+import matplotlib.pyplot as plt
+from nice.algorithms.connectivity import epochs_compute_wsmi
+
+np.set_printoptions(threshold=900)  # For verbose printing
+
+# --- Parameters ---
+n_trials = 30           # number of trials (for testing)
+n_samples = 250         # number of timepoints per trial
+sfreq = 500             # sampling frequency (Hz)
+dt = 1 / sfreq
+times = np.arange(n_samples) * dt  # time vector for one trial (in seconds)
+
+# --- Create Fake Data ---
+# Generate three channels per trial:
+#   - Left input: a sine wave at 10 Hz (plus small noise)
+#   - Attention: a sine wave at 10 Hz (plus small noise), nearly identical to left input
+#   - Right input: a sine wave at 5 Hz (plus larger noise) to be less correlated with attention
+
+left_trials = []
+attention_trials = []
+right_trials = []
+
+
+
+for trial in range(n_trials):
+    # Left channel: 10 Hz sine with little noise
+    left_signal = np.sin(2 * np.pi * 10 * times + 0.5) + 0.05 * np.random.randn(n_samples) - 10 * times + 5 * times**2
+    # Attention channel: same 10 Hz sine with little noise (highly correlated with left)
+    attention_signal = np.sin(2 * np.pi * 10 * times) + 0.05 * np.random.randn(n_samples) - 5 * times + 15 * times**2
+    # Right channel: 5 Hz sine with higher noise (lower correlation with attention)
+    right_signal = np.sin(2 * np.pi * 5 * times) + 0.2 * np.random.randn(n_samples) - 15 * times - times**2
+    
+    left_trials.append(left_signal)
+    attention_trials.append(attention_signal)
+    right_trials.append(right_signal)
+
+
+left_trials = np.array(left_trials)           # shape: (n_trials, n_samples)
+attention_trials = np.array(attention_trials)   # shape: (n_trials, n_samples)
+right_trials = np.array(right_trials)           # shape: (n_trials, n_samples)
+
+print(left_trials.shape, attention_trials.shape, right_trials.shape)    
+
+
+raw_data = np.concatenate([
+    left_trials,        # left input: shape (1, n_trials*n_samples)
+    right_trials,       # right input: shape (1, n_trials*n_samples)
+    attention_trials    # attention layer: shape (1, n_trials*n_samples)
+], axis=0)
+
+raw_data = raw_data.reshape(3, -1)
+print("raw_data shape:", raw_data.shape)  # Expected shape: (3, n_trials*n_samples)
+
+# Plot a snippet of the continuous raw data (first 1000 samples)
+plt.figure(figsize=(10, 4))
+for i, ch_name in enumerate(['left_input', 'right_input', 'attention_layer']):
+    plt.plot(raw_data[i, :1000], label=ch_name)
+plt.title('Raw Continuous Data (first 1000 samples)')
+plt.xlabel('Sample index')
+plt.legend()
+plt.show()
+
+# --- Create an MNE Raw Object ---
+ch_names = ['left_input', 'right_input', 'attention_layer']
+ch_types = ['eeg', 'eeg', 'eeg']
+info = mne.create_info(ch_names=ch_names, sfreq=sfreq, ch_types=ch_types)
+raw = mne.io.RawArray(raw_data, info)
+print(raw.info)
+
+
+events = np.array([[i * n_samples, 0, 1] for i in range(n_trials)])
+epochs = mne.Epochs(raw, events, event_id={'Trial': 1}, tmin=0, tmax = 0.5,
+                    baseline=None, preload=True)
+print("Epochs time vector:", epochs.times)
+print("Epochs data shape:", epochs.get_data().shape)  # Expected shape: (n_trials, n_channels, n_times)
+epochs.plot(n_epochs = 4, scalings='auto')
+plt.show
+
+
+# --- Define Analysis Window for wSMI ---
+# Suppose we want to use data from 0.1 to 0.35 seconds within each trial.
+tmin_wsmi = 0
+tmax_wsmi = 0.5
+print(f"Using tmin={tmin_wsmi} sec and tmax={tmax_wsmi} sec for wSMI computation")
+
+# --- Run wsmi ---
+kernel = 3
+taus = [4, 8, 16, 32, 64]  # in milliseconds, for testing
+wsmi_results = {}
+
+for tau_ms in taus:
+    # Convert tau from ms to samples
+    tau_samples = int(tau_ms / (1000 / sfreq))
+    print(f"\nRunning wsmi for tau = {tau_ms} ms (tau_samples = {tau_samples})")
+    wsmi, smi, sym, count = epochs_compute_wsmi(
+        epochs,
+        kernel=kernel,
+        tau=tau_samples,
+        backend='python',
+        method_params={'bypass_csd': True}
+    )
+    wsmi_results[tau_ms] = wsmi
+    print("wsmi shape:", wsmi.shape)
+
+    print("count shape:", count.shape) 
+
+
+for tau_ms in taus:
+    wsmi = wsmi_results[tau_ms]
+    # Assuming the shape is (3, 3, n_trials) per the wsmi function provided.
+    wsmi_left_attention = wsmi[0, 2, :]  # left input vs attention layer
+    wsmi_right_attention = wsmi[1, 2, :]  # right input vs attention layer
+    print(f"\nFor tau = {tau_ms} ms:")
+    print("Mean wsmi (left vs attention):", np.mean(wsmi_left_attention))
+    print("Mean wsmi (right vs attention):", np.mean(wsmi_right_attention))
+
+# --- Plotting wsmi Results for Visual Comparison ---
+fig, axs = plt.subplots(1, len(taus), figsize=(12, 4))
+for idx, tau_ms in enumerate(taus):
+    wsmi = wsmi_results[tau_ms]
+    wsmi_left_attention = wsmi[0, 2, :]
+    wsmi_right_attention = wsmi[1, 2, :]
+    axs[idx].boxplot([wsmi_left_attention, wsmi_right_attention],
+                     labels=['Left-Attention', 'Right-Attention'])
+    axs[idx].set_title(f"tau = {tau_ms} ms")
+    axs[idx].set_ylabel("wsmi")
+plt.tight_layout()
+plt.show()
+
+#pearson correlation between the sigals
+from scipy.stats import pearsonr
+corr_left_att = [pearsonr(left_trials[i], attention_trials[i])[0] for i in range(n_trials)]
+corr_right_att = [pearsonr(right_trials[i], attention_trials[i])[0] for i in range(n_trials)]
+
+# --- Plotting the correlation between the signals ---
+plt.figure(figsize=(10, 4))
+plt.plot(corr_left_att, label='Left-Attention')
+plt.plot(corr_right_att, label='Right-Attention')
+plt.title('Correlation between Signals')
+plt.xlabel('Trial')
+plt.ylabel('Correlation')
+plt.legend()
+plt.show()
+

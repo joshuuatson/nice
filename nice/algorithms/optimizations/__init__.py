@@ -20,5 +20,13 @@
 # License version 3 without disclosing the source code of your own
 # applications.
 #
-from . import ompk
-from . import jivaro
+# from nice.algorithms.optimizations import ompk
+# from nice.algorithms.optimizations import jivaro
+
+def import_ompk():
+    from . import ompk
+    return ompk
+
+def import_jivaro():
+    from . import jivaro
+    return jivaro

@@ -1,0 +1,285 @@
+import numpy as np
+import mne
+import mne_connectivity
+import pickle
+import matplotlib.pyplot as plt
+from scipy.stats import zscore
+from scipy.signal import detrend
+from mne_connectivity import spectral_connectivity_epochs
+from scipy.stats import ttest_rel
+np.set_printoptions(threshold=100)  
+mne.set_log_level('WARNING')  
+
+#---this calculates the granger causality for the LFP data---
+#how bad is this: c:\Users\joshu\nice\testcodegranger\Granger_Causality_LFP_zscore_detrend:113:
+#  RuntimeWarning: fmin=0.500 Hz corresponds to 0.250 < 5 cycles based on the epoch length 0.500 sec,
+#  need at least 10.000 sec epochs or fmin=10.000. Spectrum estimate will be unreliable.
+
+
+
+i_values = [1, 2, 4, 8, 14, 15, 20, 23]
+
+
+gc_data = {}
+
+for dataset in i_values:
+    gc_data[f'dataset_{dataset}'] = {
+        'left': [],
+        'right': []
+    }
+
+
+  
+
+for dataset in i_values:
+    # Load data
+    file_path = f'C:/Users/joshu/PartIIIProject/RSNNdale_attention_{dataset}_attention_test'
+    data = pickle.load(open(file_path, 'rb'))
+
+    # Extract relevant data
+    left_input_LFP = data['LFP'][0][0] 
+    right_input_LFP = data['LFP'][0][1] 
+    attention_LFP = data['LFP_rec'][0][2]  
+    omitted = data["omit"][0]
+
+    label_left = data['label_left'][0]
+    label_right = data['label_right'][0]
+    attend_01 = data['attend'][0]
+
+    # Get valid trial indices
+    left_indices = np.where((label_left != label_right) & (omitted == 0) & (attend_01 == 0))[0]
+    right_indices = np.where((label_left != label_right) & (omitted == 0) & (attend_01 == 1))[0]
+
+    # Slice the data
+    left_input_LFP_om_left_relevant = left_input_LFP[left_indices, 100:350]
+    right_input_LFP_om_left_relevant = right_input_LFP[left_indices, 100:350]
+    attention_LFP_om_left_relevant = attention_LFP[left_indices, 100:350]
+
+    left_input_LFP_om_right_relevant = left_input_LFP[right_indices, 100:350]
+    right_input_LFP_om_right_relevant = right_input_LFP[right_indices, 100:350]
+    attention_LFP_om_right_relevant = attention_LFP[right_indices, 100:350]
+
+#---zscore trials---
+    left_input_LFP_om_left_relevant = zscore(left_input_LFP_om_left_relevant, axis=0)
+    right_input_LFP_om_left_relevant = zscore(right_input_LFP_om_left_relevant, axis=0)
+    attention_LFP_om_left_relevant = zscore(attention_LFP_om_left_relevant, axis=0)
+
+    left_input_LFP_om_right_relevant = zscore(left_input_LFP_om_right_relevant, axis=0)
+    right_input_LFP_om_right_relevant = zscore(right_input_LFP_om_right_relevant, axis=0)
+    attention_LFP_om_right_relevant = zscore(attention_LFP_om_right_relevant, axis=0)
+
+#---detrend trials---
+    left_input_LFP_om_left_relevant = detrend(left_input_LFP_om_left_relevant, axis=0)
+    right_input_LFP_om_left_relevant = detrend(right_input_LFP_om_left_relevant, axis=0)
+    attention_LFP_om_left_relevant = detrend(attention_LFP_om_left_relevant, axis=0)
+
+    left_input_LFP_om_right_relevant = detrend(left_input_LFP_om_right_relevant, axis=0)
+    right_input_LFP_om_right_relevant = detrend(right_input_LFP_om_right_relevant, axis=0)
+    attention_LFP_om_right_relevant = detrend(attention_LFP_om_right_relevant, axis=0)
+
+#---detrend time---
+    for i in range(len(left_input_LFP_om_left_relevant)):
+        left_input_LFP_om_left_relevant[i] = detrend(left_input_LFP_om_left_relevant[i], axis=0)
+        right_input_LFP_om_left_relevant[i] = detrend(right_input_LFP_om_left_relevant[i], axis=0)
+        attention_LFP_om_left_relevant[i] = detrend(attention_LFP_om_left_relevant[i], axis=0)
+
+    for i in range(len(left_input_LFP_om_right_relevant)):
+        left_input_LFP_om_right_relevant[i] = detrend(left_input_LFP_om_right_relevant[i], axis=0)
+        right_input_LFP_om_right_relevant[i] = detrend(right_input_LFP_om_right_relevant[i], axis=0)
+        attention_LFP_om_right_relevant[i] = detrend(attention_LFP_om_right_relevant[i], axis=0)
+
+   
+
+    # Stack data into shape (n_trials, n_channels, n_samples)
+    data_left = np.stack([left_input_LFP_om_left_relevant, right_input_LFP_om_left_relevant, attention_LFP_om_left_relevant], axis=1)
+    data_right = np.stack([left_input_LFP_om_right_relevant, right_input_LFP_om_right_relevant, attention_LFP_om_right_relevant], axis=1)
+
+    # Define MNE info
+    sfreq = 500  # Sampling frequency
+    ch_names = ['left_input', 'right_input', 'attention_layer']
+    ch_types = ['eeg', 'eeg', 'eeg']
+    info = mne.create_info(ch_names=ch_names, sfreq=sfreq, ch_types=ch_types)
+
+    # Create events array
+    n_times = data_left.shape[2]  # Number of samples per trial
+    events_left = np.array([[i * n_times, 0, 1] for i in range(data_left.shape[0])])
+    events_right = np.array([[i * n_times, 0, 1] for i in range(data_right.shape[0])])
+
+    # Convert data into MNE Epochs
+    epochs_left = mne.EpochsArray(data_left, info, events=events_left, tmin=0)
+    epochs_right = mne.EpochsArray(data_right, info, events=events_right, tmin=0)
+
+    # Define channel indices for Granger causality
+    seeds = np.array([[0], [1]])
+    targets = np.array([[2], [2]])
+    indices = (seeds, targets)
+
+    # Compute Granger causality
+    gc_left = spectral_connectivity_epochs(
+        epochs_left, method='gc', indices=indices, sfreq=sfreq,
+        fmin=0.5, fmax=100.0, tmin=0.0, tmax=(n_times - 1) / sfreq, gc_n_lags=5
+    )
+
+    gc_right = spectral_connectivity_epochs(
+        epochs_right, method='gc', indices=indices, sfreq=sfreq,
+        fmin=0.5, fmax=100.0, tmin=0.0, tmax=(n_times - 1) / sfreq, gc_n_lags=5
+    )
+
+    # Extract Granger causality data
+    gc_data_left = gc_left.get_data()
+    gc_data_right = gc_right.get_data()
+    freqs = gc_left.freqs
+    
+
+    gc_data[f'dataset_{dataset}']['left'] = gc_data_left
+    gc_data[f'dataset_{dataset}']['right'] = gc_data_right
+
+   
+    
+
+    # # # Plot Granger causality results
+    # # fig, ax = plt.subplots(1, 2, figsize=(12, 6))
+
+    # # ax[0].plot(freqs, gc_data_left[0, :], label="GC Left -> Attention", color='r')
+    # # ax[0].plot(freqs, gc_data_left[1, :], label="GC Right -> Attention", color='k')
+    # # ax[0].set_title("Attention Left - Dataset " + str(dataset))
+    # # ax[0].set_xlabel("Frequency (Hz)")
+    # # ax[0].set_ylabel("Granger Causality")
+    # # ax[0].legend()
+
+    # # ax[1].plot(freqs, gc_data_right[0, :], label="GC Left -> Attention", color='r')
+    # # ax[1].plot(freqs, gc_data_right[1, :], label="GC Right -> Attention", color='k')
+    # # ax[1].set_title("Attention Right - Dataset " + str(dataset))
+    # # ax[1].set_xlabel("Frequency (Hz)")
+    # # ax[1].set_ylabel("Granger Causality")
+    # # ax[1].legend()
+
+    # # plt.tight_layout()
+    # # plt.show()
+
+
+
+    # # Define channel indices for Granger causality
+    # targets = np.array([[0], [1]])
+    # seeds = np.array([[2], [2]])
+    # indices = (seeds, targets)
+
+    # # Compute Granger causality
+    # gc_left_back = spectral_connectivity_epochs(
+    #     epochs_left, method='gc', indices=indices, sfreq=sfreq,
+    #     fmin=0.5, fmax=100.0, tmin=0.0, tmax=(n_times - 1) / sfreq, gc_n_lags=5
+    # )
+
+    # gc_right_back = spectral_connectivity_epochs(
+    #     epochs_right, method='gc', indices=indices, sfreq=sfreq,
+    #     fmin=0.5, fmax=100.0, tmin=0.0, tmax=(n_times - 1) / sfreq, gc_n_lags=5
+    # )
+
+    # # Extract Granger causality data
+    # gc_data_left_back = gc_left_back.get_data()
+    # gc_data_right_back = gc_right_back.get_data()
+    # freqs = gc_left.freqs
+
+    # net_gc_left = gc_data_left - gc_data_left_back
+    # net_gc_right = gc_data_right - gc_data_right_back
+
+    # # # Plot Granger causality results
+    # # fig, ax = plt.subplots(1, 2, figsize=(12, 6))
+
+    # # ax[0].plot(freqs, net_gc_left[0, :], label="GC Left -> Attention", color='r')
+    # # ax[0].plot(freqs, net_gc_left[1, :], label="GC Right -> Attention", color='k')
+    # # ax[0].set_title("Attention Left - Dataset " + str(dataset))
+    # # ax[0].set_xlabel("Frequency (Hz)")
+    # # ax[0].set_ylabel("Granger Causality")
+    # # ax[0].legend()
+
+    # # ax[1].plot(freqs, net_gc_right[0, :], label="GC Left -> Attention", color='r')
+    # # ax[1].plot(freqs, net_gc_right[1, :], label="GC Right -> Attention", color='k')
+    # # ax[1].set_title("Attention Right - Dataset " + str(dataset))
+    # # ax[1].set_xlabel("Frequency (Hz)")
+    # # ax[1].set_ylabel("Granger Causality")
+    # # ax[1].legend()
+
+    # # plt.tight_layout()
+    # # plt.show()
+
+    # #time reversed
+    # # Define channel indices for Granger causality
+    # seeds = np.array([[0], [1]])
+    # targets = np.array([[2], [2]])
+    # indices = (seeds, targets)
+
+    # # Compute Granger causality
+    # gc_left = spectral_connectivity_epochs(
+    #     epochs_left, method='gc_tr', indices=indices, sfreq=sfreq,
+    #     fmin=0.5, fmax=100.0, tmin=0.0, tmax=(n_times - 1) / sfreq, gc_n_lags=5
+    # )
+
+    # gc_right = spectral_connectivity_epochs(
+    #     epochs_right, method='gc_tr', indices=indices, sfreq=sfreq,
+    #     fmin=0.5, fmax=100.0, tmin=0.0, tmax=(n_times - 1) / sfreq, gc_n_lags=5
+    # )
+
+    # # Extract Granger causality data
+    # gc_data_left = gc_left.get_data()
+    # gc_data_right = gc_right.get_data()
+    # freqs = gc_left.freqs
+
+   
+
+
+
+    # # Plot Granger causality results
+    # fig, ax = plt.subplots(1, 2, figsize=(12, 6))
+
+    # ax[0].plot(freqs, gc_data_left[0, :], label="GC Left -> Attention", color='r')
+    # ax[0].plot(freqs, gc_data_left[1, :], label="GC Right -> Attention", color='k')
+    # ax[0].set_title("Attention Left - Dataset " + str(dataset))
+    # ax[0].set_xlabel("Frequency (Hz)")
+    # ax[0].set_ylabel("Granger Causality")
+    # ax[0].legend()
+
+    # ax[1].plot(freqs, gc_data_right[0, :], label="GC Left -> Attention", color='r')
+    # ax[1].plot(freqs, gc_data_right[1, :], label="GC Right -> Attention", color='k')
+    # ax[1].set_title("Attention Right - Dataset " + str(dataset))
+    # ax[1].set_xlabel("Frequency (Hz)")
+    # ax[1].set_ylabel("Granger Causality")
+    # ax[1].legend()
+
+    # plt.tight_layout()
+    # plt.show()
+    
+
+
+print(gc_data)
+
+mean_data_left = np.mean([gc_data[f'dataset_{dataset}']['left'] for dataset in i_values], axis = 0) 
+mean_data_right = np.mean([gc_data[f'dataset_{dataset}']['right'] for dataset in i_values], axis = 0) 
+
+print(mean_data_left.shape)
+print(mean_data_right.shape)
+print(np.array(freqs).shape)
+
+# Plot mean Granger causality results
+fig, ax = plt.subplots(1, 2, figsize=(12, 6))
+
+ax[0].plot(freqs, mean_data_left[0, :], label="Mean GC Left -> Attention", color='r')
+ax[0].plot(freqs, mean_data_left[1, :], label="Mean GC Right -> Attention", color='k')
+ax[0].set_title("Mean Attention Left")
+ax[0].set_xlabel("Frequency (Hz)")
+ax[0].set_ylabel("Granger Causality")
+ax[0].legend()
+
+ax[1].plot(freqs, mean_data_right[0, :], label="Mean GC Left -> Attention", color='r')
+ax[1].plot(freqs, mean_data_right[1, :], label="Mean GC Right -> Attention", color='k')
+ax[1].set_title("Mean Attention Right")
+ax[1].set_xlabel("Frequency (Hz)")
+ax[1].set_ylabel("Granger Causality")
+ax[1].legend()
+
+plt.tight_layout()
+plt.show()
+
+
+
+
