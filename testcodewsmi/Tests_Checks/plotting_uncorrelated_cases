@@ -95,17 +95,17 @@ for class_right in classes_right:
         right_indices = {}
 
         for i in range(0, 20):
-            left_indices[i] = np.where((omitted == 0) & (attend_01 == 0) & (label_left == i))[0]
-            right_indices[i] = np.where((omitted == 0) & (attend_01 == 1) & (label_right == i))[0]
+            left_indices[i] = np.where((omitted == 0) & (attend_01 == 0) & (label_left == 0) & (label_right == i))[0]
+            right_indices[i] = np.where((omitted == 0) & (attend_01 == 1) & (label_left == 0) & (label_right == i))[0]
 
 
-
+        
         #for left 0 and right ith
-        left_input_LFP_om_left = left_input_LFP[left_indices[0]]
+        left_input_LFP_om_left = left_input_LFP[left_indices[class_right]]
         left_input_LFP_om_left_relevant = left_input_LFP_om_left[:, 100:350]
-        right_input_LFP_om_left = right_input_LFP[left_indices[0]]
+        right_input_LFP_om_left = right_input_LFP[left_indices[class_right]]
         right_input_LFP_om_left_relevant = right_input_LFP_om_left[:, 100:350]
-        attention_LFP_om_left = attention_LFP[left_indices[0]]
+        attention_LFP_om_left = attention_LFP[left_indices[class_right]]
         attention_LFP_om_left_relevant = attention_LFP_om_left[:, 100:350]
 
 

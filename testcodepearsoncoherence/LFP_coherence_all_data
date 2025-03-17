@@ -1,5 +1,4 @@
 import numpy as np
-import mne
 import pickle
 import matplotlib.pyplot as plt
 from coherence import field_field_coherence

@@ -114,8 +114,6 @@ for file_number in i_values:
     right_input_LFP_om_left_relevant = right_input_LFP_om_left[:, 100:350]
 
     
-
-
     left_input_LFP_om_right = left_input_LFP[right_indices]
     left_input_LFP_om_right_relevant = left_input_LFP_om_right[:, 100:350]
     right_input_LFP_om_right = right_input_LFP[right_indices]

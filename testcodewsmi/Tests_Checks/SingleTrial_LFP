@@ -1,0 +1,622 @@
+# import numpy as np
+# import mne
+# import pickle
+# import matplotlib.pyplot as plt
+# from nice.algorithms.connectivity import epochs_compute_wsmi
+# np.set_printoptions(threshold=100)  #default threshold
+# from scipy.ndimage import gaussian_filter1d
+# from scipy.stats import zscore
+# from scipy.signal import detrend
+# import time
+
+# time_start = time.time()
+# #load data
+# file_path = 'C:/Users/joshu/PartIIIProject/RSNNdale_attention_1_attention_test'
+# data = pickle.load(open(file_path, 'rb'))
+
+# load_time = time.time() - time_start
+# print(f"Data loaded in {load_time:.2f} seconds")
+
+# attention_labels = data['label_attend'][0]
+# label_left = data['label_left'][0]
+# label_right = data['label_right'][0]
+# attend_01 = data['attend'][0]
+
+
+# #not filtered for omitted trials 
+# left_input_LFP = data['LFP'][0][0]  # Left input  [0,1] means left, Right 
+# right_input_LFP = data['LFP'][0][1]  # Right input
+# attention_LFP = data['LFP_rec'][0][2]  # Attention layer  [2] means attention 
+# omitted = data["omit"][0]
+
+
+# left_idx =  np.where((attend_01 == 0) & (omitted == 0) & (label_left == 0) & (label_right == 2))[0]
+# right_idx = np.where((attend_01 == 1) & (omitted == 0) & (label_left == 0) & (label_right == 2))[0]
+
+# print(left_idx)
+
+# left_attleft = left_input_LFP[left_idx][:, 100:350]
+# right_attleft = right_input_LFP[left_idx][:, 100:350]
+# att_attleft = attention_LFP[left_idx][:, 100:350]
+
+# print(left_attleft)
+
+# left_attright = left_input_LFP[right_idx][:, 100:350]
+# right_attright = right_input_LFP[right_idx][:, 100:350]
+# att_attright = attention_LFP[right_idx][:, 100:350]
+
+
+# fix, axs = plt.subplots(1, 2, figsize=(12, 10))
+# axs[0].plot(left_attleft.mean(axis = 0), label='left_attleft')
+# axs[0].plot(right_attleft.mean(axis = 0), label='right_attleft')
+# axs[0].plot(att_attleft.mean(axis = 0), label='att_attleft')
+# axs[0].legend()
+# axs[0].set_title('Attention Left before')
+
+# axs[1].plot(left_attright.mean(axis=0), label='left_attright')
+# axs[1].plot(right_attright.mean(axis=0), label='right_attright')
+# axs[1].plot(att_attright.mean(axis=0), label='att_attright')
+# axs[1].legend()
+# axs[1].set_title('Attention Right before')
+
+# plt.legend()
+# plt.show()
+
+
+# def preprocess_data(data):
+#     data = detrend(data, axis = 0)
+
+#     for i in range(len(data)):
+#         data[i] = detrend(data[i])
+
+#     data = zscore(data, axis = 0)
+#     return data
+
+# left_attleft = preprocess_data(left_attleft)
+# right_attleft = preprocess_data(right_attleft)
+# att_attleft = preprocess_data(att_attleft)
+
+# left_attright = preprocess_data(left_attright)
+# right_attright = preprocess_data(right_attright)
+# att_attright = preprocess_data(att_attright)
+
+# fig, axs = plt.subplots(1, 2, figsize=(12, 10))
+# axs[0].plot(left_attleft.mean(axis = 0), label='left_attleft')
+# axs[0].plot(right_attleft.mean(axis = 0), label='right_attleft')
+# axs[0].plot(att_attleft.mean(axis = 0), label='att_attleft')
+# axs[0].legend()
+# axs[0].set_title('Attention Left after')
+
+# axs[1].plot(left_attright.mean(axis=0), label='left_attright')
+# axs[1].plot(right_attright.mean(axis=0), label='right_attright')
+# axs[1].plot(att_attright.mean(axis=0), label='att_attright')
+# axs[1].legend()
+# axs[1].set_title('Attention Right after')
+
+# plt.legend()
+# plt.show()
+
+
+
+# # Prepare raw data for left and right attention trials
+# raw_data_left = np.stack([left_attleft.mean(axis=0), right_attleft.mean(axis=0), att_attleft.mean(axis=0)])
+# raw_data_right = np.stack([left_attright.mean(axis=0), right_attright.mean(axis=0), att_attright.mean(axis=0)])
+
+# n_times = raw_data_left.shape[1]
+
+# dt = 0.002
+# sfreq = 1 / dt
+# ch_names = ['left_input', 'right_input', 'attention_layer']
+# ch_types = ['eeg', 'eeg', 'eeg']
+# info = mne.create_info(ch_names=ch_names, sfreq=sfreq, ch_types=ch_types)
+
+# # Create MNE RawArray for left and right attention trials
+# raw_data_left_mne = mne.io.RawArray(raw_data_left, info)
+# raw_data_right_mne = mne.io.RawArray(raw_data_right, info)
+
+# events_left = np.array([[i * n_times, 0, 1] for i in range(len(left_attleft[0])) ])
+# events_right = np.array([[i * n_times, 0, 1] for i in range(len(left_attright[0])) ])
+
+# # Create MNE Epochs for left and right attention trials
+# epochs_left = mne.Epochs(raw_data_left_mne, events_left, event_id={'Trial': 1}, tmin=0, tmax=0.5, baseline=None, preload=True)
+# epochs_right = mne.Epochs(raw_data_right_mne, events_right, event_id={'Trial': 1}, tmin=0, tmax=0.5, baseline=None, preload=True)
+
+# print(epochs_left.get_data().shape)
+# print(epochs_right.get_data().shape)
+
+# print(epochs_left)
+# print(epochs_right)
+
+# # Plot epochs
+# epochs_left.plot(scalings='auto')
+# epochs_right.plot(scalings='auto')
+# plt.show()
+
+# kernel = 3
+# taus = [8, 16, 32, 64]  # in ms
+
+# # Calculate wSMI for left attention trials
+# wsmi_results_left = {}
+# for tau in taus:
+#     tau_samples = int(tau / (1000 / sfreq))
+#     wsmi, _, _, _ = epochs_compute_wsmi(
+#         epochs_left, kernel=kernel, tau=tau_samples, backend='python', method_params={'bypass_csd': True}
+#     )
+#     wsmi_results_left[tau] = wsmi
+
+# # Calculate wSMI for right attention trials
+# wsmi_results_right = {}
+# for tau in taus:
+#     tau_samples = int(tau / (1000 / sfreq))
+#     wsmi, _, _, _ = epochs_compute_wsmi(
+#         epochs_right, kernel=kernel, tau=tau_samples, backend='python', method_params={'bypass_csd': True}
+#     )
+#     wsmi_results_right[tau] = wsmi
+
+# # Plot wSMI results
+# fig, axs = plt.subplots(1, 2, figsize=(12, 6))
+
+# # Plot for attention left
+# wsmi_left_att = [wsmi_results_left[tau][0, 2, :] for tau in taus]
+# wsmi_right_att = [wsmi_results_left[tau][1, 2, :] for tau in taus]
+# axs[0].scatter(taus, wsmi_left_att, label='left-att', color='r')
+# axs[0].scatter(taus, wsmi_right_att, label='right-att', color='k')
+# axs[0].set_title('Attention Left')
+# axs[0].legend()
+
+# # Plot for attention right
+# wsmi_left_att = [wsmi_results_right[tau][0, 2, :] for tau in taus]
+# wsmi_right_att = [wsmi_results_right[tau][1, 2, :] for tau in taus]
+# axs[1].scatter(taus, wsmi_left_att, label='left-att', color='r')
+# axs[1].scatter(taus, wsmi_right_att, label='right-att', color='k')
+# axs[1].set_title('Attention Right')
+# axs[1].legend()
+
+# plt.show()
+
+
+import numpy as np
+import matplotlib.pyplot as plt
+import pickle
+import time
+import gc
+import mne
+from scipy.stats import zscore
+from scipy.signal import detrend
+import copy
+np.set_printoptions(threshold=100)  # Default threshold
+mne.set_log_level('WARNING')
+import warnings
+warnings.simplefilter("ignore", category=DeprecationWarning)
+
+#this can run all of the pairs in ~ 
+run_time = time.time()
+file_numbers = [1, 2, 4, 8, 14, 15, 20, 23]
+
+
+# classes_left = np.arange(0, 20)
+# classes_right = np.arange(0, 20)
+
+classes_left = [0]
+classes_right = [0]
+
+
+agg_structure = {f'dataset_{file_number}': 
+                 {f'left_class_{class_left}': 
+                  {f'right_class_{class_right}': [] for class_right in classes_right} for class_left in classes_left} for file_number in file_numbers}
+
+left_input_LFP_attleft_agg = copy.deepcopy(agg_structure)
+right_input_LFP_attleft_agg = copy.deepcopy(agg_structure)
+attention_LFP_attleft_agg = copy.deepcopy(agg_structure)
+
+left_input_LFP_attright_agg = copy.deepcopy(agg_structure)
+right_input_LFP_attright_agg = copy.deepcopy(agg_structure)
+attention_LFP_attright_agg = copy.deepcopy(agg_structure)
+
+n_values = {f'dataset_{file_number}':
+            {f'left_class_{class_left}':
+             {f'right_class_{class_right}': {
+                'attleft': [],
+                'attright': []
+                } for class_right in classes_right} for class_left in classes_left} for file_number in file_numbers}
+
+total_time = time.time()
+total_load_time = time.time()
+for file_number in file_numbers:   #will first load the file and extract the data
+    file_path = f'C:/Users/joshu/PartIIIProject/RSNNdale_attention_{file_number}_attention_test'
+    load_data_start_time = time.time()
+    data = pickle.load(open(file_path, 'rb'))
+    elapsed_time = time.time() - load_data_start_time
+    print(f"Dataset {file_number} loaded in {elapsed_time:.2f} seconds")
+    file_process_time = time.time()
+
+    attention_labels = data['label_attend'][0]
+    label_left = data['label_left'][0]
+    label_right = data['label_right'][0]
+    attend_01 = data['attend'][0]
+    omitted = data["omit"][0]
+
+    # Extract LFP signals
+    left_input_LFP = data['LFP'][0][0]
+    right_input_LFP = data['LFP'][0][1]
+    attention_LFP = data['LFP_rec'][0][2]
+
+    for class_left in classes_left:
+         for class_right in classes_right: 
+    
+            left_indices = np.where((omitted ==0) & (attend_01 == 0) & (label_left == class_left) & (label_right == class_right))[0]
+            right_indices = np.where((omitted ==0) & (attend_01 == 1) & (label_left == class_left) & (label_right == class_right))[0]
+
+            print(left_indices)
+            print(right_indices)
+
+            n_values[f'dataset_{file_number}'][f'left_class_{class_left}'][f'right_class_{class_right}'][f'attleft'] = [len(left_indices)]  #e.g. checks number of trials of this class combo for attentino left
+            n_values[f'dataset_{file_number}'][f'left_class_{class_left}'][f'right_class_{class_right}'][f'attright'] = [len(right_indices)]  #nb need both left and right indices to be non empty
+
+            if len(left_indices) >= 1:
+                left_input_LFP_attleft = left_input_LFP[left_indices][:, 100:350]
+                right_input_LFP_attleft = right_input_LFP[left_indices][:, 100:350]
+                attention_LFP_attleft = attention_LFP[left_indices][:, 100:350]
+
+                left_input_LFP_attleft_agg[f'dataset_{file_number}'][f'left_class_{class_left}'][f'right_class_{class_right}'].append(left_input_LFP_attleft)
+                right_input_LFP_attleft_agg[f'dataset_{file_number}'][f'left_class_{class_left}'][f'right_class_{class_right}'].append(right_input_LFP_attleft)
+                attention_LFP_attleft_agg[f'dataset_{file_number}'][f'left_class_{class_left}'][f'right_class_{class_right}'].append(attention_LFP_attleft)
+                print(f'appended {len(left_indices)} trial(s) to left_agg datasets')
+
+            if len(right_indices) >= 1:
+
+                left_input_LFP_attright = left_input_LFP[right_indices][:, 100:350]
+                right_input_LFP_attright = right_input_LFP[right_indices][:, 100:350]
+                attention_LFP_attright = attention_LFP[right_indices][:, 100:350]
+
+                left_input_LFP_attright_agg[f'dataset_{file_number}'][f'left_class_{class_left}'][f'right_class_{class_right}'].append(left_input_LFP_attright)   
+                right_input_LFP_attright_agg[f'dataset_{file_number}'][f'left_class_{class_left}'][f'right_class_{class_right}'].append(right_input_LFP_attright)
+                attention_LFP_attright_agg[f'dataset_{file_number}'][f'left_class_{class_left}'][f'right_class_{class_right}'].append(attention_LFP_attright)
+                print(f'appended {len(right_indices)} trial(s) to right_agg datasets')
+
+    del data
+    gc.collect()
+    elapsed_time = time.time() - file_process_time
+    print(f"Dataset {file_number} processed in {elapsed_time:.2f} seconds")
+
+
+# for file_number in file_numbers:
+#     if left_input_LFP_attleft_agg[f'dataset_{file_number}']['left_class_12']['right_class_18']:
+#         print(f"Dataset {file_number} has {len(left_input_LFP_attleft_agg[f'dataset_{file_number}']['left_class_12']['right_class_18'][0])} trials for left attleft")
+
+# for file_number in file_numbers:
+#     if left_input_LFP_attright_agg[f'dataset_{file_number}']['left_class_12']['right_class_18']:
+#         print(f"Dataset {file_number} has {len(left_input_LFP_attright_agg[f'dataset_{file_number}']['left_class_12']['right_class_18'][0])} trials for left attright")
+
+# for file_number in file_numbers:
+#     print(f'n_values left for dataset {file_number} = {n_values[f"dataset_{file_number}"]["left_class_12"]["right_class_18"]["attleft"]}')
+
+# for file_number in file_numbers:    
+#     print(f'n_values right for dataset {file_number} = {n_values[f"dataset_{file_number}"]["left_class_12"]["right_class_18"]["attright"]}')
+
+
+#dont want to process here - want to process when its in the big array
+print(f'Total load time = {time.time() - total_load_time:.2f} seconds')
+
+#-------formatting the trials into a single array for each class pair, of length n_samples * n_trials------------------
+all_structure = {f'left_class_{class_left}': {f'right_class_{class_right}': [] for class_right in classes_right} for class_left in classes_left}
+
+left_input_LFP_attleft_all = copy.deepcopy(all_structure)
+right_input_LFP_attleft_all = copy.deepcopy(all_structure)
+attention_LFP_attleft_all = copy.deepcopy(all_structure)
+
+left_input_LFP_attright_all = copy.deepcopy(all_structure)
+right_input_LFP_attright_all = copy.deepcopy(all_structure)
+attention_LFP_attright_all = copy.deepcopy(all_structure)
+
+for filenumber in file_numbers:
+    for class_left in classes_left:
+        for class_right in classes_right:
+            left_input_LFP_attleft_all[f'left_class_{class_left}'][f'right_class_{class_right}'].extend(left_input_LFP_attleft_agg[f'dataset_{filenumber}'][f'left_class_{class_left}'][f'right_class_{class_right}'])
+            right_input_LFP_attleft_all[f'left_class_{class_left}'][f'right_class_{class_right}'].extend(right_input_LFP_attleft_agg[f'dataset_{filenumber}'][f'left_class_{class_left}'][f'right_class_{class_right}'])
+            attention_LFP_attleft_all[f'left_class_{class_left}'][f'right_class_{class_right}'].extend(attention_LFP_attleft_agg[f'dataset_{filenumber}'][f'left_class_{class_left}'][f'right_class_{class_right}'])
+
+            left_input_LFP_attright_all[f'left_class_{class_left}'][f'right_class_{class_right}'].extend(left_input_LFP_attright_agg[f'dataset_{filenumber}'][f'left_class_{class_left}'][f'right_class_{class_right}'])
+            right_input_LFP_attright_all[f'left_class_{class_left}'][f'right_class_{class_right}'].extend(right_input_LFP_attright_agg[f'dataset_{filenumber}'][f'left_class_{class_left}'][f'right_class_{class_right}'])
+            attention_LFP_attright_all[f'left_class_{class_left}'][f'right_class_{class_right}'].extend(attention_LFP_attright_agg[f'dataset_{filenumber}'][f'left_class_{class_left}'][f'right_class_{class_right}'])
+
+#------ want to preprocess each array here now that they are properly compiled ----------------
+# print('full left attleft', left_input_LFP_attleft_all["left_class_12"]["right_class_18"])
+# print('full left attright',left_input_LFP_attright_all["left_class_12"]["right_class_18"])
+
+for class_left in classes_left:
+        for class_right in classes_right:
+            left_input_LFP_attleft_all[f'left_class_{class_left}'][f'right_class_{class_right}'] = np.vstack(left_input_LFP_attleft_all[f'left_class_{class_left}'][f'right_class_{class_right}'])
+            right_input_LFP_attleft_all[f'left_class_{class_left}'][f'right_class_{class_right}'] = np.vstack(right_input_LFP_attleft_all[f'left_class_{class_left}'][f'right_class_{class_right}'])
+            attention_LFP_attleft_all[f'left_class_{class_left}'][f'right_class_{class_right}'] = np.vstack(attention_LFP_attleft_all[f'left_class_{class_left}'][f'right_class_{class_right}'])
+
+            left_input_LFP_attright_all[f'left_class_{class_left}'][f'right_class_{class_right}'] = np.vstack(left_input_LFP_attright_all[f'left_class_{class_left}'][f'right_class_{class_right}'])
+            right_input_LFP_attright_all[f'left_class_{class_left}'][f'right_class_{class_right}'] = np.vstack(right_input_LFP_attright_all[f'left_class_{class_left}'][f'right_class_{class_right}'])
+            attention_LFP_attright_all[f'left_class_{class_left}'][f'right_class_{class_right}'] = np.vstack(attention_LFP_attright_all[f'left_class_{class_left}'][f'right_class_{class_right}'])
+
+# print('full left attleft', left_input_LFP_attleft_all["left_class_12"]["right_class_18"], 'with length', len(left_input_LFP_attleft_all["left_class_12"]["right_class_18"]))
+# print('full left attright',left_input_LFP_attright_all["left_class_12"]["right_class_18"], 'with length', len(left_input_LFP_attright_all["left_class_12"]["right_class_18"]))
+
+left_attleft = copy.deepcopy(all_structure)
+right_attleft = copy.deepcopy(all_structure)
+att_attleft = copy.deepcopy(all_structure)
+
+left_attright = copy.deepcopy(all_structure)
+right_attright = copy.deepcopy(all_structure)
+att_attright = copy.deepcopy(all_structure)
+
+
+n_values_sum = {f'left_class_{class_left}': {f'right_class_{class_right}': {'attleft': 0, 'attright': 0} for class_right in classes_right} for class_left in classes_left}
+
+
+for class_left in classes_left:
+    for class_right in classes_right:
+        n_values_sum[f'left_class_{class_left}'][f'right_class_{class_right}']['attleft'] = sum(
+            n_values[f'dataset_{dataset}'][f'left_class_{class_left}'][f'right_class_{class_right}']['attleft'][0] for dataset in file_numbers  #this will check through all the datasets 
+        )
+        n_values_sum[f'left_class_{class_left}'][f'right_class_{class_right}']['attright'] = sum(
+            n_values[f'dataset_{dataset}'][f'left_class_{class_left}'][f'right_class_{class_right}']['attright'][0] for dataset in file_numbers
+        )
+
+#this should now pick a class pair, and just sum the number in the dataset for each attention condition
+
+# print('total number of trials in left attleft =', n_values_sum['left_class_12']['right_class_18']['attleft'])
+# print('total number of trials in left attright =', n_values_sum['left_class_12']['right_class_18']['attright'])
+
+
+for class_left in classes_left:
+    for class_right in classes_right:
+        left_attleft[f'left_class_{class_left}'][f'right_class_{class_right}'] = (left_input_LFP_attleft_all[f'left_class_{class_left}'][f'right_class_{class_right}'])
+        right_attleft[f'left_class_{class_left}'][f'right_class_{class_right}'] = (right_input_LFP_attleft_all[f'left_class_{class_left}'][f'right_class_{class_right}'])
+        att_attleft[f'left_class_{class_left}'][f'right_class_{class_right}'] = (attention_LFP_attleft_all[f'left_class_{class_left}'][f'right_class_{class_right}'])
+
+        left_attright[f'left_class_{class_left}'][f'right_class_{class_right}'] = (left_input_LFP_attright_all[f'left_class_{class_left}'][f'right_class_{class_right}'])
+        right_attright[f'left_class_{class_left}'][f'right_class_{class_right}'] = (right_input_LFP_attright_all[f'left_class_{class_left}'][f'right_class_{class_right}'])
+        att_attright[f'left_class_{class_left}'][f'right_class_{class_right}'] = (attention_LFP_attright_all[f'left_class_{class_left}'][f'right_class_{class_right}'])  
+
+
+#-------------wsmi calculation----------------
+n_times = 250
+dt = 0.002
+sfreq = 1 / dt
+
+ch_names = ['left_input', 'right_input', 'attention_layer']
+ch_types = ['eeg', 'eeg', 'eeg']
+info = mne.create_info(ch_names=ch_names, sfreq=sfreq, ch_types=ch_types)
+
+wsmi_means = {}
+wsmi_stdevs = {}
+
+
+for class_left in classes_left:
+    wsmi_start = time.time()
+    wsmi_means[f'left_class_{class_left}'] = {}
+    wsmi_stdevs[f'left_class_{class_left}'] = {}
+
+
+    for class_right in classes_right: 
+        if n_values_sum[f'left_class_{class_left}'][f'right_class_{class_right}']['attleft'] == 0:
+            continue            
+
+
+        wsmi_means[f'left_class_{class_left}'][f'right_class_{class_right}'] = {
+            'left_attleft': [],
+            'right_attleft': [],
+            'left_attright': [],
+            'right_attright': []
+        }
+        wsmi_stdevs[f'left_class_{class_left}'][f'right_class_{class_right}'] = {
+            'left_attleft': [],
+            'right_attleft': [],
+            'left_attright': [],
+            'right_attright': []
+        }
+
+        #--can store the mean for each condition and each pair
+        
+        #reshaping data for attention left
+        raw_data_left = np.concatenate([
+            left_attleft[f'left_class_{class_left}'][f'right_class_{class_right}'], 
+            right_attleft[f'left_class_{class_left}'][f'right_class_{class_right}'],
+            att_attleft[f'left_class_{class_left}'][f'right_class_{class_right}'] 
+            ], axis=0)
+
+        print("raw_data_left shape =", raw_data_left.shape)  
+        #Reshape into (n_channels, n_samples)
+        raw_data_left = raw_data_left.reshape(3, -1)  
+        print('raw data left reshaped =', raw_data_left.shape) 
+        raw_left = mne.io.RawArray(raw_data_left, info)
+        print("raw_data_left =", raw_left)
+
+
+
+        #defininf event objects, arrays like [0,0,1], [500, 0, 1], [1000, 0, 1] etc
+        events_left = np.array([[i * n_times, 0, 1] for i in range(0, n_values_sum[f'left_class_{class_left}'][f'right_class_{class_right}']['attleft']) ])
+        print(events_left)
+
+        epochs_left = mne.Epochs(raw_left, events_left, event_id={'Trial': 1}, tmin=0, tmax =  0.25,  baseline=None, preload=True)
+
+        epochs_left.plot(n_epochs = 4, n_channels=3, scalings = 'auto', title="Attention Left")
+        plt.show()
+
+
+
+for class_left in classes_left:
+    wsmi_start = time.time()
+    wsmi_means[f'left_class_{class_left}'] = {}
+    wsmi_stdevs[f'left_class_{class_left}'] = {}
+
+
+    for class_right in classes_right:       
+        if n_values_sum[f'left_class_{class_left}'][f'right_class_{class_right}']['attright'] == 0:  
+            continue      
+
+
+        wsmi_means[f'left_class_{class_left}'][f'right_class_{class_right}'] = {
+            'left_attleft': [],
+            'right_attleft': [],
+            'left_attright': [],
+            'right_attright': []
+        }
+        wsmi_stdevs[f'left_class_{class_left}'][f'right_class_{class_right}'] = {
+            'left_attleft': [],
+            'right_attleft': [],
+            'left_attright': [],
+            'right_attright': []
+        }
+
+        #--can store the mean for each condition and each pair
+        
+        #reshaping date for attention right 
+        raw_data_right = np.concatenate([
+            left_attright[f'left_class_{class_left}'][f'right_class_{class_right}'],
+            right_attright[f'left_class_{class_left}'][f'right_class_{class_right}'],
+            att_attright[f'left_class_{class_left}'][f'right_class_{class_right}']            
+        ], axis=0)
+
+        #print('raw_data_right shape =', raw_data_right.shape)
+        raw_data_right = raw_data_right.reshape(3, -1)
+        #print('raw_data_right reshaped =', raw_data_right.shape)
+        raw_right = mne.io.RawArray(raw_data_right, info)
+        #print('raw_data_right =', raw_right)
+
+
+        events_right = np.array([[i * n_times, 0, 1] for i in range(0, n_values_sum[f'left_class_{class_left}'][f'right_class_{class_right}']['attright']) ]) 
+        print(events_right)
+
+        epochs_right = mne.Epochs(raw_right, events_right, event_id={'Trial': 1}, tmin=0, tmax = 0.25, baseline=None, preload=True)
+        
+        epochs_right.plot(n_epochs = 4, n_channels=3, scalings = 'auto', title="Attention Right")
+        plt.show()
+        
+
+
+
+def preprocess_data(data):
+    # data = detrend(data, axis = 0)   #data seems to look nicer if i do this
+
+    for i in range(len(data)):
+        data[i] = detrend(data[i])
+
+    data = zscore(data, axis = 0)
+    return data
+
+for class_left in classes_left:
+    for class_right in classes_right:
+        left_attleft[f'left_class_{class_left}'][f'right_class_{class_right}'] = preprocess_data(left_input_LFP_attleft_all[f'left_class_{class_left}'][f'right_class_{class_right}'])
+        right_attleft[f'left_class_{class_left}'][f'right_class_{class_right}'] = preprocess_data(right_input_LFP_attleft_all[f'left_class_{class_left}'][f'right_class_{class_right}'])
+        att_attleft[f'left_class_{class_left}'][f'right_class_{class_right}'] = preprocess_data(attention_LFP_attleft_all[f'left_class_{class_left}'][f'right_class_{class_right}'])
+
+        left_attright[f'left_class_{class_left}'][f'right_class_{class_right}'] = preprocess_data(left_input_LFP_attright_all[f'left_class_{class_left}'][f'right_class_{class_right}'])
+        right_attright[f'left_class_{class_left}'][f'right_class_{class_right}'] = preprocess_data(right_input_LFP_attright_all[f'left_class_{class_left}'][f'right_class_{class_right}'])
+        att_attright[f'left_class_{class_left}'][f'right_class_{class_right}'] = preprocess_data(attention_LFP_attright_all[f'left_class_{class_left}'][f'right_class_{class_right}'])  
+
+
+
+
+#------------plotting again post processing-----------------------
+wsmi_means = {}
+wsmi_stdevs = {}
+
+
+for class_left in classes_left:
+    wsmi_start = time.time()
+    wsmi_means[f'left_class_{class_left}'] = {}
+    wsmi_stdevs[f'left_class_{class_left}'] = {}
+
+
+    for class_right in classes_right: 
+        if n_values_sum[f'left_class_{class_left}'][f'right_class_{class_right}']['attleft'] == 0:
+            continue            
+
+
+        wsmi_means[f'left_class_{class_left}'][f'right_class_{class_right}'] = {
+            'left_attleft': [],
+            'right_attleft': [],
+            'left_attright': [],
+            'right_attright': []
+        }
+        wsmi_stdevs[f'left_class_{class_left}'][f'right_class_{class_right}'] = {
+            'left_attleft': [],
+            'right_attleft': [],
+            'left_attright': [],
+            'right_attright': []
+        }
+
+        #--can store the mean for each condition and each pair
+        
+        #reshaping data for attention left
+        raw_data_left = np.concatenate([
+            left_attleft[f'left_class_{class_left}'][f'right_class_{class_right}'], 
+            right_attleft[f'left_class_{class_left}'][f'right_class_{class_right}'],
+            att_attleft[f'left_class_{class_left}'][f'right_class_{class_right}'] 
+            ], axis=0)
+
+        print("raw_data_left shape =", raw_data_left.shape)  
+        #Reshape into (n_channels, n_samples)
+        raw_data_left = raw_data_left.reshape(3, -1)  
+        print('raw data left reshaped =', raw_data_left.shape) 
+        raw_left = mne.io.RawArray(raw_data_left, info)
+        print("raw_data_left =", raw_left)
+
+
+
+        #defininf event objects, arrays like [0,0,1], [500, 0, 1], [1000, 0, 1] etc
+        events_left = np.array([[i * n_times, 0, 1] for i in range(0, n_values_sum[f'left_class_{class_left}'][f'right_class_{class_right}']['attleft']) ])
+        print(events_left)
+
+        epochs_left = mne.Epochs(raw_left, events_left, event_id={'Trial': 1}, tmin=0, tmax =  0.25,  baseline=None, preload=True)
+
+        epochs_left.plot(n_epochs = 4, n_channels=3, scalings = 'auto', title="Attention Left")
+        plt.show()
+
+
+
+for class_left in classes_left:
+    wsmi_start = time.time()
+    wsmi_means[f'left_class_{class_left}'] = {}
+    wsmi_stdevs[f'left_class_{class_left}'] = {}
+
+
+    for class_right in classes_right:       
+        if n_values_sum[f'left_class_{class_left}'][f'right_class_{class_right}']['attright'] == 0:  
+            continue      
+
+
+        wsmi_means[f'left_class_{class_left}'][f'right_class_{class_right}'] = {
+            'left_attleft': [],
+            'right_attleft': [],
+            'left_attright': [],
+            'right_attright': []
+        }
+        wsmi_stdevs[f'left_class_{class_left}'][f'right_class_{class_right}'] = {
+            'left_attleft': [],
+            'right_attleft': [],
+            'left_attright': [],
+            'right_attright': []
+        }
+
+        #--can store the mean for each condition and each pair
+        
+        #reshaping date for attention right 
+        raw_data_right = np.concatenate([
+            left_attright[f'left_class_{class_left}'][f'right_class_{class_right}'],
+            right_attright[f'left_class_{class_left}'][f'right_class_{class_right}'],
+            att_attright[f'left_class_{class_left}'][f'right_class_{class_right}']            
+        ], axis=0)
+
+        #print('raw_data_right shape =', raw_data_right.shape)
+        raw_data_right = raw_data_right.reshape(3, -1)
+        #print('raw_data_right reshaped =', raw_data_right.shape)
+        raw_right = mne.io.RawArray(raw_data_right, info)
+        #print('raw_data_right =', raw_right)
+
+
+        events_right = np.array([[i * n_times, 0, 1] for i in range(0, n_values_sum[f'left_class_{class_left}'][f'right_class_{class_right}']['attright']) ]) 
+        print(events_right)
+
+        epochs_right = mne.Epochs(raw_right, events_right, event_id={'Trial': 1}, tmin=0, tmax = 0.25, baseline=None, preload=True)
+        
+        epochs_right.plot(n_epochs = 4 , n_channels=3, scalings = 'auto', title="Attention Right")
+        plt.show()
+        

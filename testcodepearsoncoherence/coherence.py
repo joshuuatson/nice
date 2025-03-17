@@ -9,11 +9,11 @@ import numpy as np
 
 
 def field_field_coherence(x,y,dt, trl_indx = None):
-    print(x.shape)
+#    print(x.shape)
     if trl_indx is not None:
         x = x[trl_indx,:]
         y = y[trl_indx,:]
-    print(x.shape)
+#    print(x.shape)
         
     T = x.shape[0]    
     N = x.shape[1] 

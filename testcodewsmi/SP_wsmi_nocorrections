@@ -10,6 +10,12 @@ warnings.filterwarnings("ignore")
 from scipy.ndimage import gaussian_filter1d
 from scipy.stats import pearsonr
 from scipy.stats import ttest_rel
+from scipy.ndimage import gaussian_filter1d
+
+def smooth_with_gaussian(data, sigma=3):
+    return gaussian_filter1d(data, sigma=sigma, axis=1) 
+
+sigma = 2
 
 #---this calculates wsmi and pearson for spiking data
 
@@ -83,13 +89,7 @@ for file_number in i_values:
     #eft_input_attendingleft_t (468, 250, 160) (80 for attention)
     #left_input_attendingright_t (536, 250, 160) (80 for attention)
 
-    from scipy.ndimage import gaussian_filter1d
-
-    def smooth_with_gaussian(data, sigma=3):
-        return gaussian_filter1d(data, sigma=sigma, axis=1) 
-
-    sigma = 2
-
+    
     left_in_attleft_sm = smooth_with_gaussian(left_input_attendingleft_t, sigma=sigma) 
     right_in_attleft_sm = smooth_with_gaussian(right_input_attendingleft_t, sigma=sigma) 
     attlay_attleft_sm = smooth_with_gaussian(attention_layer_attendingleft_t, sigma=sigma) 
