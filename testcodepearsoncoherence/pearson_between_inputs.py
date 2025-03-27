@@ -20,8 +20,30 @@ file_numbers = [1, 2, 4, 8, 14, 15, 20, 23]
 classes_left = np.arange(0, 20)
 classes_right = np.arange(0, 20)
 
+def preprocess(data):
+    # data = detrend(data, axis=0)
+    # epsilon = 1e-9
+    # data = (data - np.mean(data, axis=0)) / (np.std(data, axis=0) + epsilon)
+    
+    return data
+
 results_raw = {f'dataset_{file_number}': {f'left_class_{class_left}': {f'right_class_{class_right}': [] for class_right in classes_right} for class_left in classes_left} for file_number in file_numbers}
 errors_raw = {f'dataset_{file_number}': {f'left_class_{class_left}': {f'right_class_{class_right}': [] for class_right in classes_right} for class_left in classes_left} for file_number in file_numbers}
+
+
+def store_data(data_left, data_right, file_number, class_left, class_right):
+    pearson_correlations = []
+
+    for i in range(len(left_input_LFP_LR)):
+        pearson_correlations.append(pearsonr(data_left[i], data_right[i])[0])
+
+    mean_pearson = np.mean(pearson_correlations)  #takes the mean across trials and leaves a single value .float
+    std = np.std(pearson_correlations)
+    sem = std / np.sqrt(len(pearson_correlations))
+
+    results_raw[f'dataset_{file_number}'][f'left_class_{class_left}'][f'right_class_{class_right}'].append(mean_pearson)  #raw[dataset] gets a single values for each pair
+    errors_raw[f'dataset_{file_number}'][f'left_class_{class_left}'][f'right_class_{class_right}'].append(sem)
+
 
 total_time = time.time()
 for file_number in  file_numbers:
@@ -32,56 +54,34 @@ for file_number in  file_numbers:
     elapsed_time = time.time() - load_data_start_time
     print(f"Dataset {file_number} loaded in {elapsed_time:.2f} seconds")
 
+    attention_labels = data['label_attend'][0]
+    label_left = data['label_left'][0]
+    label_right = data['label_right'][0]
+    attend_01 = data['attend'][0]
+    omitted = data["omit"][0]
+    relevant = np.where(omitted == 0)[0]    #indices of agg where not omitted
+    
+    left_input_LFP = preprocess(data['LFP'][0][0][relevant])
+    right_input_LFP = preprocess(data['LFP'][0][1][relevant])
+    attention_LFP = preprocess(data['LFP_rec'][0][2][relevant])
+
+    
     for class_left in classes_left:        
         for class_right in classes_right:
 
-            label_left = data['label_left'][0]
-            label_right = data['label_right'][0]
-            omitted = data["omit"][0]
-
-            # Extract LFP signals
-            left_input_LFP = data['LFP'][0][0]
-            right_input_LFP = data['LFP'][0][1]
-
-            indices = np.where((omitted ==0) & (label_left == class_left) & (label_right == class_right))[0]
+            
+            indices_agg = np.where((omitted ==0) & (label_left == class_left) & (label_right == class_right))[0]
+            indices = np.where(np.isin(relevant, indices_agg))[0]
                        
             if len(indices) == 0:
                 continue
             else:
                 #print(f' found data for left {class_left}, right {class_right}')
-                left_input_LFP = left_input_LFP[indices]
-                right_input_LFP = right_input_LFP[indices]
-                 
-                # # #--- preprocessing the data ----------------------------------------NB detrending first to avoid 0 and NaN values
-                # if len(indices) >= 1:
-                #     left_input_LFP = detrend(left_input_LFP, axis=0)
-                #     right_input_LFP = detrend(right_input_LFP, axis=0)
+                left_input_LFP_LR = left_input_LFP[indices, :]
+                right_input_LFP_LR = right_input_LFP[indices, :]
 
-                # for i in range(len(left_input_LFP)):
-                #     left_input_LFP[i] = detrend(left_input_LFP[i])
-                #     right_input_LFP[i] = detrend(right_input_LFP[i])
-        
-                # if len(indices) >= 2:
-                #     left_input_LFP = zscore(left_input_LFP, axis=0)
-                #     right_input_LFP = zscore(right_input_LFP, axis=0)
-               
-
-                # #----------------------------------------------------------------
-                pearson_correlations = []
-        
-                for i in range(len(left_input_LFP)):
-                    pearson_correlations.append(pearsonr(left_input_LFP[i], right_input_LFP[i])[0])
-           
-                mean_pearson = np.mean(pearson_correlations)  #takes the mean across trials and leaves a single value .float
-                std = np.std(pearson_correlations)
-                sem = std / np.sqrt(len(pearson_correlations))
-
-                results_raw[f'dataset_{file_number}'][f'left_class_{class_left}'][f'right_class_{class_right}'].append(mean_pearson)  #raw[dataset] gets a single values for each pair
-                errors_raw[f'dataset_{file_number}'][f'left_class_{class_left}'][f'right_class_{class_right}'].append(sem)
-
-
-                del left_input_LFP, right_input_LFP
-                gc.collect()
+                store_data(left_input_LFP_LR, right_input_LFP_LR, file_number, class_left, class_right)
+  
 
     del(data)
     gc.collect()
