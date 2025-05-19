@@ -135,6 +135,94 @@ def epochs_compute_wsmi(epochs, kernel, tau, tmin=None, tmax=None,
     return wsmi, smi, sym, count
 
 
+def epochs_compute_wsmi_dropped(epochs, kernel, tau, tmin=None, tmax=None,
+                        backend='python', method_params=None, n_jobs='auto'):
+    """Compute weighted mutual symbolic information (wSMI)
+
+    Parameters
+    ----------
+    epochs : instance of mne.Epochs
+        The epochs on which to compute the wSMI.
+    kernel : int
+        The number of samples to use to transform to a symbol
+    tau : int
+        The number of samples left between the ones that defines a symbol.
+    method_params : dictionary.
+        Overrides default parameters.
+        OpenMP specific {'nthreads'}
+    backend : {'python', 'openmp'}
+        The backend to be used. Defaults to 'pytho'.
+    """
+    if method_params is None:
+        method_params = {}
+
+    if n_jobs == 'auto':
+        try:
+            import multiprocessing as mp
+            mp.set_start_method('forkserver')
+            import mkl
+            n_jobs = int(mp.cpu_count() / mkl.get_max_threads())
+            logger.info(
+                'Autodetected number of jobs {}'.format(n_jobs))
+        except Exception:
+            logger.info('Cannot autodetect number of jobs')
+            n_jobs = 1
+
+    if 'bypass_csd' in method_params and method_params['bypass_csd'] is True:
+        logger.info('Bypassing CSD')
+        csd_epochs = epochs
+        picks = mne.io.pick.pick_types(csd_epochs.info, meg=True, eeg=True)
+    else:
+        logger.info('Computing CSD')
+        csd_epochs = mne.preprocessing.compute_current_source_density(
+            epochs, lambda2=1e-5)
+        picks = mne.io.pick.pick_types(csd_epochs.info, csd=True)
+
+    freq = csd_epochs.info['sfreq']
+
+    data = csd_epochs.get_data()[:, picks, ...]
+    n_epochs = len(data)
+
+    # --- Removed lowpass filter: use raw data for symbolic transformation ---
+    # data = np.hstack(data)
+    # fdata = np.transpose(np.array(
+    #     np.split(filtfilt(b, a, data), n_epochs, axis=1)), [1, 2, 0])
+    # Instead, just reshape to (n_channels, n_times, n_epochs)
+    fdata = np.transpose(data, [1, 2, 0])
+
+    time_mask = _time_mask(epochs.times, tmin, tmax)
+    fdata = fdata[:, time_mask, :]
+    if backend == 'python':
+        from .information_theory.permutation_entropy import _symb_python
+        logger.info("Performing symbolic transformation")
+        sym, count = _symb_python(fdata, kernel, tau)
+        nsym = count.shape[1]
+        wts = _get_weights_matrix(nsym)
+        logger.info("Running wsmi with python...")
+        wsmi, smi = _wsmi_python(sym, count, wts)
+    elif backend == 'openmp':
+        from .optimizations.jivaro import wsmi as jwsmi
+        nsym = np.math.factorial(kernel)
+        wts = _get_weights_matrix(nsym)
+        nthreads = (method_params['nthreads'] if 'nthreads' in
+                    method_params else 1)
+        if nthreads == 'auto':
+            try:
+                import mkl
+                nthreads = mkl.get_max_threads()
+                logger.info(
+                    'Autodetected number of threads {}'.format(nthreads))
+            except Exception:
+                logger.info('Cannot autodetect number of threads')
+                nthreads = 1
+        wsmi, smi, sym, count = jwsmi(fdata, kernel, tau, wts, nthreads)
+    else:
+        raise ValueError('backend %s not supported for wSMI'
+                         % backend)
+
+    return wsmi, smi, sym, count
+
+
 def _wsmi_python(data, count, wts):
     """Compute wsmi"""
     nchannels, nsamples, ntrials = data.shape
