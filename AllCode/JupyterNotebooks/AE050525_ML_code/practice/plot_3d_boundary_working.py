@@ -131,7 +131,7 @@ grid.spacing = spacing  # spacing between points
 grid.point_data["probability"] = probs.ravel(order="F")  # Fortran order for VTK - what does this mean
 
 #extract isosurface at 0.5 (decision boundary)
-contours = grid.contour([0.5])
+contours = grid.contour([0.9])
 
 #plotting
 plotter = pv.Plotter()
