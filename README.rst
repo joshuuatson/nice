@@ -1,5 +1,14 @@
 .. -*- mode: rst -*-
 
+This repo contains all of the code produced throught the progression of my Part III project
+The final code used to produce the results of the project report can be found under
+All_Code -> jupyter notebooks -> Project_Results
+=======================================================
+
+
+
+
+Below is the README associated with the NICE tools project.
 `NICE Tools`
 =======================================================
 
